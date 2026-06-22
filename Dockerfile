@@ -4,8 +4,8 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
 
 COPY Cargo.toml Cargo.lock ./
-# Cache dependencies layer — build a dummy main first to avoid re-downloading on src changes
-RUN mkdir src && echo "fn main() {}" > src/main.rs && cargo build --release && rm -rf src
+# Cache dependencies layer — build dummy stubs to avoid re-downloading on src changes
+RUN mkdir src && echo "fn main() {}" > src/main.rs && echo "" > src/lib.rs && cargo build --release && rm -rf src
 
 COPY src ./src
 COPY migrations ./migrations

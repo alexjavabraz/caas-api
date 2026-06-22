@@ -9,7 +9,7 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
-caas_api = { path = ".." }
+caas_api = { path = "..", package = "caas-api" }
 
 [[bin]]
 name = "fuzz_validate_safe_text"
