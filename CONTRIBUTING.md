@@ -59,6 +59,10 @@ docker run -d --name caas-postgres -e POSTGRES_USER=caas \
 docker run -d --name caas-rabbitmq \
   -p 5672:5672 -p 15672:15672 rabbitmq:3-management
 
+# Redis (idempotency cache + request tracking)
+docker network create caas-net 2>/dev/null || true
+docker run -d --name redis-caas --network caas-net redis:7-alpine
+
 cargo run
 ```
 
