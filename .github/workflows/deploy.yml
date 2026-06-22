@@ -80,10 +80,10 @@ jobs:
             done
 
             # Write version file
-            mkdir -p /opt/caas-api
+            mkdir -p /home/ec2-user/caas-api
             printf "git_sha=%s\nimage=%s\ndeployed_at=%s\ndeployed_by=github-actions\n" \
               "$IMAGE_TAG" "$IMAGE" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-              > /opt/caas-api/version.txt
+              > /home/ec2-user/caas-api/version.txt
 
             # Prune dangling images
             docker image prune -f
