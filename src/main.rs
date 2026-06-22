@@ -6,9 +6,10 @@ mod routes;
 mod services;
 
 use axum::Router;
+use axum::http::HeaderValue;
 use std::sync::Arc;
 use tokio::net::TcpListener;
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::EnvFilter;
@@ -51,9 +52,13 @@ async fn main() -> anyhow::Result<()> {
         .layer(RequestBodyLimitLayer::new(1024 * 1024))
         .layer(
             CorsLayer::new()
-                .allow_origin(Any)
-                .allow_headers(Any)
-                .allow_methods(Any),
+                .allow_origin(AllowOrigin::list([
+                    HeaderValue::from_static("https://developers.tokeniza.online"),
+                    HeaderValue::from_static("http://localhost:4200"),
+                    HeaderValue::from_static("http://localhost"),
+                ]))
+                .allow_headers(tower_http::cors::Any)
+                .allow_methods(tower_http::cors::Any),
         )
         .with_state(state);
 
