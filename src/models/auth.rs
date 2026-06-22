@@ -1,15 +1,16 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+use validator::Validate;
 
-/// A registered developer client (has client_id + client_secret)
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct DeveloperClient {
     pub id: Uuid,
     pub name: String,
     pub email: String,
     pub client_id: String,
-    pub client_secret_hash: String, // bcrypt hash — never returned in API responses
+    pub client_secret_hash: String,
+    pub password_hash: String,
     pub is_active: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -20,13 +21,13 @@ pub struct DeveloperClient {
 #[allow(dead_code)]
 pub struct NewClientCredentials {
     pub client_id: String,
-    pub client_secret: String, // plaintext — shown once
+    pub client_secret: String,
 }
 
 /// JWT claims embedded in access tokens
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Claims {
-    pub sub: String, // client_id
+    pub sub: String,
     pub client_name: String,
     pub exp: i64,
     pub iat: i64,
@@ -37,13 +38,49 @@ pub struct Claims {
 pub struct TokenRequest {
     pub client_id: String,
     pub client_secret: String,
-    pub grant_type: String, // must be "client_credentials"
+    pub grant_type: String,
 }
 
 /// POST /v1/auth/token response
 #[derive(Debug, Serialize)]
 pub struct TokenResponse {
     pub access_token: String,
-    pub token_type: String, // "Bearer"
-    pub expires_in: u64,    // seconds
+    pub token_type: String,
+    pub expires_in: u64,
+}
+
+/// POST /v1/auth/register request body
+#[derive(Debug, Deserialize, Validate)]
+pub struct RegisterRequest {
+    #[validate(length(min = 2, max = 100))]
+    pub name: String,
+    #[validate(email, length(max = 254))]
+    pub email: String,
+    /// 8–128 chars; strength (uppercase+lowercase+digit+special) validated separately
+    #[validate(length(min = 8, max = 128))]
+    pub password: String,
+}
+
+/// POST /v1/auth/developer/login request body
+#[derive(Debug, Deserialize, Validate)]
+pub struct LoginRequest {
+    #[validate(email, length(max = 254))]
+    pub email: String,
+    #[validate(length(min = 1, max = 128))]
+    pub password: String,
+}
+
+/// Developer identity returned in login and /me responses
+#[derive(Debug, Serialize)]
+pub struct DeveloperInfo {
+    pub client_id: String,
+    pub name: String,
+    pub email: String,
+}
+
+/// POST /v1/auth/developer/login response
+#[derive(Debug, Serialize)]
+pub struct LoginResponse {
+    pub access_token: String,
+    pub developer: DeveloperInfo,
 }
