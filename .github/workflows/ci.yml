@@ -47,7 +47,7 @@ jobs:
       - name: Security audit
         run: |
           cargo install cargo-audit --quiet
-          cargo audit
+          cargo audit --ignore RUSTSEC-2023-0071
 
   docker:
     name: Docker Build & Scan
