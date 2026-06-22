@@ -1,6 +1,6 @@
 # CaaS API — Crypto as a Service
 
-[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/REPLACE_WITH_PROJECT_ID/badge)](https://www.bestpractices.dev/projects/REPLACE_WITH_PROJECT_ID)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/13334/badge)](https://www.bestpractices.dev/projects/13334)
 [![CI](https://github.com/alexjavabraz/caas-api/actions/workflows/ci.yml/badge.svg)](https://github.com/alexjavabraz/caas-api/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
