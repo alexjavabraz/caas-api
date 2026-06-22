@@ -3,8 +3,8 @@ mod health;
 mod tokens;
 mod users;
 
-use axum::{middleware, Router};
 use crate::{middleware::auth::require_auth, AppState};
+use axum::{middleware, Router};
 
 pub fn router(state: AppState) -> Router<AppState> {
     let protected = Router::new()

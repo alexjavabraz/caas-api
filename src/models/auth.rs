@@ -25,7 +25,7 @@ pub struct NewClientCredentials {
 /// JWT claims embedded in access tokens
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Claims {
-    pub sub: String,       // client_id
+    pub sub: String, // client_id
     pub client_name: String,
     pub exp: i64,
     pub iat: i64,
@@ -43,6 +43,6 @@ pub struct TokenRequest {
 #[derive(Debug, Serialize)]
 pub struct TokenResponse {
     pub access_token: String,
-    pub token_type: String,  // "Bearer"
-    pub expires_in: u64,     // seconds
+    pub token_type: String, // "Bearer"
+    pub expires_in: u64,    // seconds
 }

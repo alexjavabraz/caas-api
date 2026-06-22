@@ -1,14 +1,15 @@
 use axum::{
     extract::{Path, State},
-    Json, Router,
     routing::post,
+    Json, Router,
 };
 use uuid::Uuid;
 
 use crate::{
     errors::{ApiError, ApiResult},
     models::token::{
-        BurnRequest, DeployTokenRequest, MintRequest, OperationResponse, PauseRequest, TransferRequest,
+        BurnRequest, DeployTokenRequest, MintRequest, OperationResponse, PauseRequest,
+        TransferRequest,
     },
     AppState,
 };
@@ -27,7 +28,10 @@ async fn deploy(
     State(state): State<AppState>,
     Json(body): Json<DeployTokenRequest>,
 ) -> ApiResult<Json<OperationResponse>> {
-    let idempotency_key = body.idempotency_key.clone().unwrap_or_else(|| Uuid::new_v4().to_string());
+    let idempotency_key = body
+        .idempotency_key
+        .clone()
+        .unwrap_or_else(|| Uuid::new_v4().to_string());
     let payload = serde_json::json!({
         "event": "token.creation.requested",
         "idempotencyKey": idempotency_key,
@@ -44,8 +48,13 @@ async fn deploy(
         }
     });
 
-    let operation_id = state.mq
-        .publish("EXCHANGE_TOKEN_TRANSFER_REQUEST", "token.creation.requested", &payload)
+    let operation_id = state
+        .mq
+        .publish(
+            "EXCHANGE_TOKEN_TRANSFER_REQUEST",
+            "token.creation.requested",
+            &payload,
+        )
         .await
         .map_err(|e| ApiError::Internal(e))?;
 
@@ -61,7 +70,10 @@ async fn mint(
     Path(address): Path<String>,
     Json(body): Json<MintRequest>,
 ) -> ApiResult<Json<OperationResponse>> {
-    let idempotency_key = body.idempotency_key.clone().unwrap_or_else(|| Uuid::new_v4().to_string());
+    let idempotency_key = body
+        .idempotency_key
+        .clone()
+        .unwrap_or_else(|| Uuid::new_v4().to_string());
     let payload = serde_json::json!({
         "event": "token.event.requested",
         "idempotencyKey": idempotency_key,
@@ -71,12 +83,17 @@ async fn mint(
         "operation": { "type": "mint", "params": { "to": body.to, "amount": body.amount } }
     });
 
-    let operation_id = state.mq
+    let operation_id = state
+        .mq
         .publish("TOKEN_EVENT", "token.event.requested", &payload)
         .await
         .map_err(|e| ApiError::Internal(e))?;
 
-    Ok(Json(OperationResponse { operation_id, status: "queued".into(), message: "Mint queued.".into() }))
+    Ok(Json(OperationResponse {
+        operation_id,
+        status: "queued".into(),
+        message: "Mint queued.".into(),
+    }))
 }
 
 async fn burn(
@@ -84,7 +101,10 @@ async fn burn(
     Path(address): Path<String>,
     Json(body): Json<BurnRequest>,
 ) -> ApiResult<Json<OperationResponse>> {
-    let idempotency_key = body.idempotency_key.clone().unwrap_or_else(|| Uuid::new_v4().to_string());
+    let idempotency_key = body
+        .idempotency_key
+        .clone()
+        .unwrap_or_else(|| Uuid::new_v4().to_string());
     let payload = serde_json::json!({
         "event": "token.event.requested",
         "idempotencyKey": idempotency_key,
@@ -94,12 +114,17 @@ async fn burn(
         "operation": { "type": "burn", "params": { "from": body.from, "amount": body.amount } }
     });
 
-    let operation_id = state.mq
+    let operation_id = state
+        .mq
         .publish("TOKEN_EVENT", "token.event.requested", &payload)
         .await
         .map_err(|e| ApiError::Internal(e))?;
 
-    Ok(Json(OperationResponse { operation_id, status: "queued".into(), message: "Burn queued.".into() }))
+    Ok(Json(OperationResponse {
+        operation_id,
+        status: "queued".into(),
+        message: "Burn queued.".into(),
+    }))
 }
 
 async fn pause(
@@ -108,7 +133,11 @@ async fn pause(
     Json(body): Json<PauseRequest>,
 ) -> ApiResult<Json<OperationResponse>> {
     let operation_id = enqueue_pause(&state, &address, &body, "pause").await?;
-    Ok(Json(OperationResponse { operation_id, status: "queued".into(), message: "Pause queued.".into() }))
+    Ok(Json(OperationResponse {
+        operation_id,
+        status: "queued".into(),
+        message: "Pause queued.".into(),
+    }))
 }
 
 async fn unpause(
@@ -117,7 +146,11 @@ async fn unpause(
     Json(body): Json<PauseRequest>,
 ) -> ApiResult<Json<OperationResponse>> {
     let operation_id = enqueue_pause(&state, &address, &body, "unpause").await?;
-    Ok(Json(OperationResponse { operation_id, status: "queued".into(), message: "Unpause queued.".into() }))
+    Ok(Json(OperationResponse {
+        operation_id,
+        status: "queued".into(),
+        message: "Unpause queued.".into(),
+    }))
 }
 
 async fn transfer(
@@ -125,7 +158,10 @@ async fn transfer(
     Path(address): Path<String>,
     Json(body): Json<TransferRequest>,
 ) -> ApiResult<Json<OperationResponse>> {
-    let idempotency_key = body.idempotency_key.clone().unwrap_or_else(|| Uuid::new_v4().to_string());
+    let idempotency_key = body
+        .idempotency_key
+        .clone()
+        .unwrap_or_else(|| Uuid::new_v4().to_string());
     let payload = serde_json::json!({
         "event": "token.event.requested",
         "idempotencyKey": idempotency_key,
@@ -135,16 +171,29 @@ async fn transfer(
         "operation": { "type": "transfer", "params": { "to": body.to, "amount": body.amount } }
     });
 
-    let operation_id = state.mq
+    let operation_id = state
+        .mq
         .publish("TOKEN_EVENT", "token.event.requested", &payload)
         .await
         .map_err(|e| ApiError::Internal(e))?;
 
-    Ok(Json(OperationResponse { operation_id, status: "queued".into(), message: "Transfer queued.".into() }))
+    Ok(Json(OperationResponse {
+        operation_id,
+        status: "queued".into(),
+        message: "Transfer queued.".into(),
+    }))
 }
 
-async fn enqueue_pause(state: &AppState, address: &str, body: &PauseRequest, op: &str) -> ApiResult<String> {
-    let idempotency_key = body.idempotency_key.clone().unwrap_or_else(|| Uuid::new_v4().to_string());
+async fn enqueue_pause(
+    state: &AppState,
+    address: &str,
+    body: &PauseRequest,
+    op: &str,
+) -> ApiResult<String> {
+    let idempotency_key = body
+        .idempotency_key
+        .clone()
+        .unwrap_or_else(|| Uuid::new_v4().to_string());
     let payload = serde_json::json!({
         "event": "token.event.requested",
         "idempotencyKey": idempotency_key,
@@ -154,7 +203,8 @@ async fn enqueue_pause(state: &AppState, address: &str, body: &PauseRequest, op:
         "operation": { "type": op }
     });
 
-    state.mq
+    state
+        .mq
         .publish("TOKEN_EVENT", "token.event.requested", &payload)
         .await
         .map_err(|e| ApiError::Internal(e))

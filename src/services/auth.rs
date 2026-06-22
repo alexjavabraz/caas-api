@@ -4,7 +4,9 @@ use jsonwebtoken::{encode, EncodingKey, Header};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-use crate::models::auth::{Claims, DeveloperClient, NewClientCredentials, TokenRequest, TokenResponse};
+use crate::models::auth::{
+    Claims, DeveloperClient, NewClientCredentials, TokenRequest, TokenResponse,
+};
 
 const TOKEN_EXPIRY_SECS: i64 = 3600; // 1 hour
 
@@ -21,7 +23,10 @@ pub fn generate_credentials() -> NewClientCredentials {
     let client_id = format!("cid_{}", Uuid::new_v4().simple());
     let secret_bytes: Vec<u8> = (0..32).map(|_| rand::random::<u8>()).collect();
     let client_secret = format!("sk_{}", hex::encode(secret_bytes));
-    NewClientCredentials { client_id, client_secret }
+    NewClientCredentials {
+        client_id,
+        client_secret,
+    }
 }
 
 /// Issue a JWT access token for a verified developer client.
@@ -57,12 +62,11 @@ pub async fn authenticate(
         anyhow::bail!("grant_type must be 'client_credentials'");
     }
 
-    let client: Option<DeveloperClient> = sqlx::query_as(
-        "SELECT * FROM developer_clients WHERE client_id = $1 AND is_active = true",
-    )
-    .bind(&req.client_id)
-    .fetch_optional(db)
-    .await?;
+    let client: Option<DeveloperClient> =
+        sqlx::query_as("SELECT * FROM developer_clients WHERE client_id = $1 AND is_active = true")
+            .bind(&req.client_id)
+            .fetch_optional(db)
+            .await?;
 
     let client = client.ok_or_else(|| anyhow::anyhow!("Invalid credentials"))?;
 

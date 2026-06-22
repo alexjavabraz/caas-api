@@ -1,5 +1,5 @@
 use anyhow::Context;
-use lapin::{Connection, ConnectionProperties, Channel};
+use lapin::{Channel, Connection, ConnectionProperties};
 use serde::Serialize;
 use uuid::Uuid;
 
@@ -17,7 +17,10 @@ impl RabbitMqService {
     }
 
     pub async fn channel(&self) -> anyhow::Result<Channel> {
-        self.connection.create_channel().await.context("Failed to create RabbitMQ channel")
+        self.connection
+            .create_channel()
+            .await
+            .context("Failed to create RabbitMQ channel")
     }
 
     pub async fn publish<T: Serialize>(

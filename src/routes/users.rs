@@ -1,13 +1,16 @@
 use axum::{
     extract::{Path, State},
-    Json, Router,
     routing::post,
+    Json, Router,
 };
 use uuid::Uuid;
 
 use crate::{
     errors::{ApiError, ApiResult},
-    models::user::{AddFiatBalanceRequest, AddTokenBalanceRequest, BalanceOperationResponse, CreateUserRequest, CreateUserResponse},
+    models::user::{
+        AddFiatBalanceRequest, AddTokenBalanceRequest, BalanceOperationResponse, CreateUserRequest,
+        CreateUserResponse,
+    },
     AppState,
 };
 
@@ -22,7 +25,10 @@ async fn create_user(
     State(state): State<AppState>,
     Json(body): Json<CreateUserRequest>,
 ) -> ApiResult<Json<CreateUserResponse>> {
-    let idempotency_key = body.idempotency_key.clone().unwrap_or_else(|| Uuid::new_v4().to_string());
+    let idempotency_key = body
+        .idempotency_key
+        .clone()
+        .unwrap_or_else(|| Uuid::new_v4().to_string());
     let payload = serde_json::json!({
         "event": "account.create.requested",
         "idempotencyKey": idempotency_key,
@@ -32,8 +38,13 @@ async fn create_user(
         "network": { "name": format!("{:?}", body.network).to_lowercase() },
     });
 
-    let operation_id = state.mq
-        .publish("EXCHANGE_ACCOUNT_CREATE_REQUEST", "account.create.requested", &payload)
+    let operation_id = state
+        .mq
+        .publish(
+            "EXCHANGE_ACCOUNT_CREATE_REQUEST",
+            "account.create.requested",
+            &payload,
+        )
         .await
         .map_err(|e| ApiError::Internal(e))?;
 
@@ -49,7 +60,10 @@ async fn add_fiat_balance(
     Path(external_id): Path<String>,
     Json(body): Json<AddFiatBalanceRequest>,
 ) -> ApiResult<Json<BalanceOperationResponse>> {
-    let idempotency_key = body.idempotency_key.clone().unwrap_or_else(|| Uuid::new_v4().to_string());
+    let idempotency_key = body
+        .idempotency_key
+        .clone()
+        .unwrap_or_else(|| Uuid::new_v4().to_string());
     let payload = serde_json::json!({
         "event": "fiat.balance.add.requested",
         "idempotencyKey": idempotency_key,
@@ -59,8 +73,13 @@ async fn add_fiat_balance(
         "currency": body.currency,
     });
 
-    let operation_id = state.mq
-        .publish("EXCHANGE_FIAT_BALANCE_REQUEST", "fiat.balance.add.requested", &payload)
+    let operation_id = state
+        .mq
+        .publish(
+            "EXCHANGE_FIAT_BALANCE_REQUEST",
+            "fiat.balance.add.requested",
+            &payload,
+        )
         .await
         .map_err(|e| ApiError::Internal(e))?;
 
@@ -76,7 +95,10 @@ async fn add_token_balance(
     Path(external_id): Path<String>,
     Json(body): Json<AddTokenBalanceRequest>,
 ) -> ApiResult<Json<BalanceOperationResponse>> {
-    let idempotency_key = body.idempotency_key.clone().unwrap_or_else(|| Uuid::new_v4().to_string());
+    let idempotency_key = body
+        .idempotency_key
+        .clone()
+        .unwrap_or_else(|| Uuid::new_v4().to_string());
     let payload = serde_json::json!({
         "event": "token.balance.add.requested",
         "idempotencyKey": idempotency_key,
@@ -87,8 +109,13 @@ async fn add_token_balance(
         "amount": body.amount,
     });
 
-    let operation_id = state.mq
-        .publish("EXCHANGE_TOKEN_BALANCE_REQUEST", "token.balance.add.requested", &payload)
+    let operation_id = state
+        .mq
+        .publish(
+            "EXCHANGE_TOKEN_BALANCE_REQUEST",
+            "token.balance.add.requested",
+            &payload,
+        )
         .await
         .map_err(|e| ApiError::Internal(e))?;
 

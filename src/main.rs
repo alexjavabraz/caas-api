@@ -39,7 +39,11 @@ async fn main() -> anyhow::Result<()> {
 
     db.run_migrations().await?;
 
-    let state = AppState { config: config.clone(), db, mq };
+    let state = AppState {
+        config: config.clone(),
+        db,
+        mq,
+    };
 
     let app = Router::new()
         .nest("/v1", routes::router(state.clone()))
