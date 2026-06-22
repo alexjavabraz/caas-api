@@ -1,0 +1,84 @@
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+concurrency:
+  group: deploy-caas-ec2
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to EC2
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host:        ${{ secrets.CAAS_EC2_HOST }}
+          username:    ec2-user
+          key:         ${{ secrets.EC2_SSH_KEY }}
+          timeout:     120s
+          script: |
+            set -e
+
+            ECR_REGISTRY="${{ secrets.AWS_ACCOUNT_ID_PROD }}.dkr.ecr.us-east-1.amazonaws.com"
+            IMAGE_TAG="${{ github.event.workflow_run.head_sha }}"
+            IMAGE="$ECR_REGISTRY/caas-api:$IMAGE_TAG"
+
+            # ECR login
+            aws ecr get-login-password --region us-east-1 | \
+              docker login --username AWS --password-stdin $ECR_REGISTRY
+
+            # Pull new image
+            docker pull "$IMAGE"
+
+            # Stop and remove old container
+            docker stop caas-api 2>/dev/null || true
+            docker rm   caas-api 2>/dev/null || true
+
+            # Start new container
+            docker run -d \
+              --name caas-api \
+              --restart unless-stopped \
+              -p 8080:8080 \
+              -e PORT=8080 \
+              -e NODE_ENV=production \
+              -e LOG_LEVEL=info \
+              -e DATABASE_URL="${{ secrets.CAAS_DB_URL }}" \
+              -e RABBITMQ_URL="${{ secrets.CAAS_RABBITMQ_URL }}" \
+              -e JWT_SECRET="${{ secrets.CAAS_JWT_SECRET }}" \
+              -e SENTRY_DSN="${{ secrets.CAAS_SENTRY_DSN }}" \
+              -e ENVIRONMENT=production \
+              "$IMAGE"
+
+            # Health check (12 × 5s = 60s)
+            for i in $(seq 1 12); do
+              STATUS=$(curl -sf http://localhost:8080/v1/health | jq -r '.status' 2>/dev/null || echo "")
+              if [ "$STATUS" = "ok" ]; then
+                echo "Health check passed on attempt $i"
+                break
+              fi
+              if [ $i -eq 12 ]; then
+                echo "Health check failed after 60s" >&2
+                docker logs caas-api --tail 50 >&2
+                exit 1
+              fi
+              sleep 5
+            done
+
+            # Write version file
+            mkdir -p /opt/caas-api
+            cat > /opt/caas-api/version.txt << EOF
+            git_sha=$IMAGE_TAG
+            image=$IMAGE
+            deployed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+            deployed_by=github-actions
+            EOF
+
+            # Prune dangling images
+            docker image prune -f
