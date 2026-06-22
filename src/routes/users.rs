@@ -3,7 +3,9 @@ use axum::{
     routing::post,
     Json, Router,
 };
+use caas_api::validation::{is_evm_address, is_safe_text};
 use uuid::Uuid;
+use validator::Validate;
 
 use crate::{
     errors::{ApiError, ApiResult},
@@ -25,6 +27,14 @@ async fn create_user(
     State(state): State<AppState>,
     Json(body): Json<CreateUserRequest>,
 ) -> ApiResult<Json<CreateUserResponse>> {
+    body.validate()
+        .map_err(|e| ApiError::Validation(e.to_string()))?;
+    if !is_safe_text(&body.external_id) {
+        return Err(ApiError::Validation(
+            "external_id contains invalid characters".into(),
+        ));
+    }
+
     let idempotency_key = body
         .idempotency_key
         .clone()
@@ -60,6 +70,19 @@ async fn add_fiat_balance(
     Path(external_id): Path<String>,
     Json(body): Json<AddFiatBalanceRequest>,
 ) -> ApiResult<Json<BalanceOperationResponse>> {
+    body.validate()
+        .map_err(|e| ApiError::Validation(e.to_string()))?;
+    if !is_safe_text(&external_id) {
+        return Err(ApiError::Validation(
+            "external_id contains invalid characters".into(),
+        ));
+    }
+    if !is_safe_text(&body.currency) {
+        return Err(ApiError::Validation(
+            "currency contains invalid characters".into(),
+        ));
+    }
+
     let idempotency_key = body
         .idempotency_key
         .clone()
@@ -95,6 +118,19 @@ async fn add_token_balance(
     Path(external_id): Path<String>,
     Json(body): Json<AddTokenBalanceRequest>,
 ) -> ApiResult<Json<BalanceOperationResponse>> {
+    body.validate()
+        .map_err(|e| ApiError::Validation(e.to_string()))?;
+    if !is_safe_text(&external_id) {
+        return Err(ApiError::Validation(
+            "external_id contains invalid characters".into(),
+        ));
+    }
+    if !is_evm_address(&body.contract_address) {
+        return Err(ApiError::Validation(
+            "contract_address must be a valid EVM address (0x + 40 hex chars)".into(),
+        ));
+    }
+
     let idempotency_key = body
         .idempotency_key
         .clone()

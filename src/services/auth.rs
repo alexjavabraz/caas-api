@@ -5,8 +5,9 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::models::auth::{
-    Claims, DeveloperClient, DeveloperInfo, LoginRequest, LoginResponse, NewClientCredentials,
-    RegisterRequest, TokenRequest, TokenResponse,
+    ApiRequestRecord, Claims, DeveloperClient, DeveloperInfo, LoginRequest, LoginResponse,
+    MeResponse, NewClientCredentials, RegisterRequest, RequestStats, RotateSecretResponse,
+    TokenRequest, TokenResponse,
 };
 
 const TOKEN_EXPIRY_SECS: i64 = 3600;
@@ -158,6 +159,65 @@ pub async fn login_developer(
             name: client.name,
             email: client.email,
         },
+    })
+}
+
+/// Fetch a developer's own profile by client_id.
+pub async fn get_me(client_id: &str, db: &sqlx::PgPool) -> anyhow::Result<MeResponse> {
+    sqlx::query_as(
+        "SELECT client_id, name, email, is_active, created_at \
+         FROM developer_clients WHERE client_id = $1",
+    )
+    .bind(client_id)
+    .fetch_one(db)
+    .await
+    .map_err(|e| anyhow::anyhow!(e))
+}
+
+/// Generate a new client secret, persist its hash, and return the plaintext (one-time).
+pub async fn rotate_secret(
+    client_id: &str,
+    db: &sqlx::PgPool,
+) -> anyhow::Result<RotateSecretResponse> {
+    let creds = generate_credentials();
+    let new_hash = hash_secret(&creds.client_secret);
+
+    sqlx::query(
+        "UPDATE developer_clients \
+         SET client_secret_hash = $1, updated_at = NOW() \
+         WHERE client_id = $2",
+    )
+    .bind(&new_hash)
+    .bind(client_id)
+    .execute(db)
+    .await?;
+
+    Ok(RotateSecretResponse {
+        client_id: client_id.to_string(),
+        client_secret: creds.client_secret,
+        message: "Secret rotated. Store it now — it will not be shown again.".into(),
+    })
+}
+
+/// Return request counts and the 50 most-recent records for a developer.
+pub async fn get_request_stats(client_id: &str, db: &sqlx::PgPool) -> anyhow::Result<RequestStats> {
+    let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM api_requests WHERE client_id = $1")
+        .bind(client_id)
+        .fetch_one(db)
+        .await?;
+
+    let requests: Vec<ApiRequestRecord> = sqlx::query_as(
+        "SELECT method, path, status_code, idempotency_key, is_idempotent_hit, created_at \
+         FROM api_requests WHERE client_id = $1 \
+         ORDER BY created_at DESC LIMIT 50",
+    )
+    .bind(client_id)
+    .fetch_all(db)
+    .await?;
+
+    Ok(RequestStats {
+        total: row.0,
+        requests,
     })
 }
 

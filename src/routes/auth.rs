@@ -1,21 +1,37 @@
-use axum::{extract::State, routing::post, Json, Router};
+use axum::{
+    extract::{Extension, State},
+    routing::{get, post},
+    Json, Router,
+};
 use caas_api::validation::{is_safe_text, is_strong_password};
 use validator::Validate;
 
 use crate::{
     errors::{ApiError, ApiResult},
     models::auth::{
-        LoginRequest, LoginResponse, NewClientCredentials, RegisterRequest, TokenRequest,
+        Claims, LoginRequest, LoginResponse, MeResponse, NewClientCredentials, RegisterRequest,
+        RequestStats, RotateSecretResponse, TokenRequest,
     },
     services::auth,
     AppState,
 };
+
+// ── Public routes (no JWT required) ──────────────────────────────────────────
 
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/token", post(token))
         .route("/register", post(register))
         .route("/developer/login", post(developer_login))
+}
+
+// ── Protected routes (JWT required — merged into protected router) ────────────
+
+pub fn protected_router() -> Router<AppState> {
+    Router::new()
+        .route("/auth/me", get(me))
+        .route("/auth/rotate-secret", post(rotate_secret))
+        .route("/auth/requests", get(get_requests))
 }
 
 // ── Validation helpers ────────────────────────────────────────────────────────
@@ -40,7 +56,7 @@ fn validate_password_strength(password: &str) -> ApiResult<()> {
     Ok(())
 }
 
-// ── Handlers ──────────────────────────────────────────────────────────────────
+// ── Public handlers ───────────────────────────────────────────────────────────
 
 async fn token(
     State(state): State<AppState>,
@@ -91,6 +107,38 @@ async fn developer_login(
     auth::login_developer(body, &state.config.jwt_secret, &state.db.pool)
         .await
         .map_err(|_| ApiError::Unauthorized)
+        .map(Json)
+}
+
+// ── Protected handlers ────────────────────────────────────────────────────────
+
+async fn me(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
+) -> ApiResult<Json<MeResponse>> {
+    auth::get_me(&claims.sub, &state.db.pool)
+        .await
+        .map_err(ApiError::Internal)
+        .map(Json)
+}
+
+async fn rotate_secret(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
+) -> ApiResult<Json<RotateSecretResponse>> {
+    auth::rotate_secret(&claims.sub, &state.db.pool)
+        .await
+        .map_err(ApiError::Internal)
+        .map(Json)
+}
+
+async fn get_requests(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
+) -> ApiResult<Json<RequestStats>> {
+    auth::get_request_stats(&claims.sub, &state.db.pool)
+        .await
+        .map_err(ApiError::Internal)
         .map(Json)
 }
 

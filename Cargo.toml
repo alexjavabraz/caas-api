@@ -37,6 +37,9 @@ rand = "0.8"
 lapin = "2"
 deadpool-lapin = "0.12"
 
+# Redis (idempotency cache + session)
+deadpool-redis = "0.15"
+
 # Database (PostgreSQL — developer credentials, API keys)
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "json", "macros", "migrate"] }
 
@@ -55,7 +58,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 
 # Sentry
-sentry = "0.34"
+sentry = { version = "0.34", features = ["tracing"] }
 
 # HMAC for client secret signing
 hmac = "0.12"

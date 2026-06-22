@@ -26,3 +26,15 @@ pub fn is_strong_password(password: &str) -> bool {
         && password.chars().any(|c| c.is_ascii_digit())
         && password.chars().any(|c| !c.is_alphanumeric())
 }
+
+/// Returns `true` if the value is a valid EVM address: `0x` + exactly 40 hex characters.
+pub fn is_evm_address(value: &str) -> bool {
+    value.len() == 42
+        && value.starts_with("0x")
+        && value[2..].chars().all(|c| c.is_ascii_hexdigit())
+}
+
+/// Returns `true` if the value is a non-empty string of ASCII digits only (no decimals or signs).
+pub fn is_amount_string(value: &str) -> bool {
+    !value.is_empty() && value.chars().all(|c| c.is_ascii_digit())
+}

@@ -3,7 +3,9 @@ use axum::{
     routing::post,
     Json, Router,
 };
+use caas_api::validation::{is_evm_address, is_safe_text};
 use uuid::Uuid;
+use validator::Validate;
 
 use crate::{
     errors::{ApiError, ApiResult},
@@ -24,10 +26,38 @@ pub fn router() -> Router<AppState> {
         .route("/:address/transfer", post(transfer))
 }
 
+fn validate_evm(addr: &str) -> ApiResult<()> {
+    if !is_evm_address(addr) {
+        return Err(ApiError::Validation(format!(
+            "'{addr}' is not a valid EVM address (expected 0x + 40 hex chars)"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_safe(value: &str, field: &str) -> ApiResult<()> {
+    if !is_safe_text(value) {
+        return Err(ApiError::Validation(format!(
+            "Field '{field}' contains invalid characters"
+        )));
+    }
+    Ok(())
+}
+
 async fn deploy(
     State(state): State<AppState>,
     Json(body): Json<DeployTokenRequest>,
 ) -> ApiResult<Json<OperationResponse>> {
+    body.validate()
+        .map_err(|e| ApiError::Validation(e.to_string()))?;
+    validate_evm(&body.owner_address)?;
+    if let Some(name) = &body.name {
+        validate_safe(name, "name")?;
+    }
+    if let Some(symbol) = &body.symbol {
+        validate_safe(symbol, "symbol")?;
+    }
+
     let idempotency_key = body
         .idempotency_key
         .clone()
@@ -70,6 +100,11 @@ async fn mint(
     Path(address): Path<String>,
     Json(body): Json<MintRequest>,
 ) -> ApiResult<Json<OperationResponse>> {
+    body.validate()
+        .map_err(|e| ApiError::Validation(e.to_string()))?;
+    validate_evm(&address)?;
+    validate_evm(&body.to)?;
+
     let idempotency_key = body
         .idempotency_key
         .clone()
@@ -101,6 +136,11 @@ async fn burn(
     Path(address): Path<String>,
     Json(body): Json<BurnRequest>,
 ) -> ApiResult<Json<OperationResponse>> {
+    body.validate()
+        .map_err(|e| ApiError::Validation(e.to_string()))?;
+    validate_evm(&address)?;
+    validate_evm(&body.from)?;
+
     let idempotency_key = body
         .idempotency_key
         .clone()
@@ -132,6 +172,10 @@ async fn pause(
     Path(address): Path<String>,
     Json(body): Json<PauseRequest>,
 ) -> ApiResult<Json<OperationResponse>> {
+    body.validate()
+        .map_err(|e| ApiError::Validation(e.to_string()))?;
+    validate_evm(&address)?;
+
     let operation_id = enqueue_pause(&state, &address, &body, "pause").await?;
     Ok(Json(OperationResponse {
         operation_id,
@@ -145,6 +189,10 @@ async fn unpause(
     Path(address): Path<String>,
     Json(body): Json<PauseRequest>,
 ) -> ApiResult<Json<OperationResponse>> {
+    body.validate()
+        .map_err(|e| ApiError::Validation(e.to_string()))?;
+    validate_evm(&address)?;
+
     let operation_id = enqueue_pause(&state, &address, &body, "unpause").await?;
     Ok(Json(OperationResponse {
         operation_id,
@@ -158,6 +206,11 @@ async fn transfer(
     Path(address): Path<String>,
     Json(body): Json<TransferRequest>,
 ) -> ApiResult<Json<OperationResponse>> {
+    body.validate()
+        .map_err(|e| ApiError::Validation(e.to_string()))?;
+    validate_evm(&address)?;
+    validate_evm(&body.to)?;
+
     let idempotency_key = body
         .idempotency_key
         .clone()

@@ -84,3 +84,38 @@ pub struct LoginResponse {
     pub access_token: String,
     pub developer: DeveloperInfo,
 }
+
+/// GET /v1/auth/me response
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct MeResponse {
+    pub client_id: String,
+    pub name: String,
+    pub email: String,
+    pub is_active: bool,
+    pub created_at: DateTime<Utc>,
+}
+
+/// POST /v1/auth/rotate-secret response (one-time plaintext)
+#[derive(Debug, Serialize)]
+pub struct RotateSecretResponse {
+    pub client_id: String,
+    pub client_secret: String,
+    pub message: String,
+}
+
+/// GET /v1/auth/requests response
+#[derive(Debug, Serialize)]
+pub struct RequestStats {
+    pub total: i64,
+    pub requests: Vec<ApiRequestRecord>,
+}
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct ApiRequestRecord {
+    pub method: String,
+    pub path: String,
+    pub status_code: i16,
+    pub idempotency_key: Option<String>,
+    pub is_idempotent_hit: bool,
+    pub created_at: DateTime<Utc>,
+}

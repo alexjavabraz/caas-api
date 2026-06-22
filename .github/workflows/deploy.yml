@@ -28,12 +28,13 @@ jobs:
           CAAS_RABBITMQ_URL:     ${{ secrets.CAAS_RABBITMQ_URL }}
           CAAS_JWT_SECRET:       ${{ secrets.CAAS_JWT_SECRET }}
           CAAS_SENTRY_DSN:       ${{ secrets.CAAS_SENTRY_DSN }}
+          CAAS_REDIS_URL:        ${{ secrets.CAAS_REDIS_URL }}
         with:
           host:     ${{ secrets.CAAS_EC2_HOST }}
           username: ec2-user
           key:      ${{ secrets.EC2_SSH_KEY }}
           timeout:  120s
-          envs:     AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_DEFAULT_REGION,ECR_REGISTRY,IMAGE_TAG,CAAS_DB_URL,CAAS_RABBITMQ_URL,CAAS_JWT_SECRET,CAAS_SENTRY_DSN
+          envs:     AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_DEFAULT_REGION,ECR_REGISTRY,IMAGE_TAG,CAAS_DB_URL,CAAS_RABBITMQ_URL,CAAS_JWT_SECRET,CAAS_SENTRY_DSN,CAAS_REDIS_URL
           script: |
             set -e
 
@@ -50,9 +51,13 @@ jobs:
             docker stop caas-api 2>/dev/null || true
             docker rm   caas-api 2>/dev/null || true
 
+            # Ensure caas-net exists (idempotent)
+            docker network create caas-net 2>/dev/null || true
+
             # Start new container
             docker run -d \
               --name caas-api \
+              --network caas-net \
               --restart unless-stopped \
               -p 8080:8080 \
               -e PORT=8080 \
@@ -61,6 +66,7 @@ jobs:
               -e RABBITMQ_URL="$CAAS_RABBITMQ_URL" \
               -e JWT_SECRET="$CAAS_JWT_SECRET" \
               -e SENTRY_DSN="$CAAS_SENTRY_DSN" \
+              -e REDIS_URL="$CAAS_REDIS_URL" \
               -e ENVIRONMENT=production \
               "$IMAGE"
 
