@@ -44,6 +44,11 @@ jobs:
       - name: Test
         run: cargo test
 
+      - name: Security audit
+        run: |
+          cargo install cargo-audit --quiet
+          cargo audit
+
   docker:
     name: Docker Build & Scan
     runs-on: ubuntu-latest
