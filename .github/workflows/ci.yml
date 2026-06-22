@@ -46,7 +46,7 @@ jobs:
 
       - name: Security audit
         run: |
-          cargo install cargo-audit --quiet
+          cargo install cargo-audit --quiet --force
           cargo audit --ignore RUSTSEC-2023-0071
 
   fuzz:
