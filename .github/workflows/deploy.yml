@@ -18,21 +18,30 @@ jobs:
     steps:
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1
+        env:
+          AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION:    us-east-1
+          ECR_REGISTRY:          ${{ secrets.AWS_ACCOUNT_ID_PROD }}.dkr.ecr.us-east-1.amazonaws.com
+          IMAGE_TAG:             ${{ github.event.workflow_run.head_sha }}
+          CAAS_DB_URL:           ${{ secrets.CAAS_DB_URL }}
+          CAAS_RABBITMQ_URL:     ${{ secrets.CAAS_RABBITMQ_URL }}
+          CAAS_JWT_SECRET:       ${{ secrets.CAAS_JWT_SECRET }}
+          CAAS_SENTRY_DSN:       ${{ secrets.CAAS_SENTRY_DSN }}
         with:
-          host:        ${{ secrets.CAAS_EC2_HOST }}
-          username:    ec2-user
-          key:         ${{ secrets.EC2_SSH_KEY }}
-          timeout:     120s
+          host:     ${{ secrets.CAAS_EC2_HOST }}
+          username: ec2-user
+          key:      ${{ secrets.EC2_SSH_KEY }}
+          timeout:  120s
+          envs:     AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_DEFAULT_REGION,ECR_REGISTRY,IMAGE_TAG,CAAS_DB_URL,CAAS_RABBITMQ_URL,CAAS_JWT_SECRET,CAAS_SENTRY_DSN
           script: |
             set -e
 
-            ECR_REGISTRY="${{ secrets.AWS_ACCOUNT_ID_PROD }}.dkr.ecr.us-east-1.amazonaws.com"
-            IMAGE_TAG="${{ github.event.workflow_run.head_sha }}"
             IMAGE="$ECR_REGISTRY/caas-api:$IMAGE_TAG"
 
-            # ECR login
+            # ECR login using injected credentials
             aws ecr get-login-password --region us-east-1 | \
-              docker login --username AWS --password-stdin $ECR_REGISTRY
+              docker login --username AWS --password-stdin "$ECR_REGISTRY"
 
             # Pull new image
             docker pull "$IMAGE"
@@ -47,12 +56,11 @@ jobs:
               --restart unless-stopped \
               -p 8080:8080 \
               -e PORT=8080 \
-              -e NODE_ENV=production \
               -e LOG_LEVEL=info \
-              -e DATABASE_URL="${{ secrets.CAAS_DB_URL }}" \
-              -e RABBITMQ_URL="${{ secrets.CAAS_RABBITMQ_URL }}" \
-              -e JWT_SECRET="${{ secrets.CAAS_JWT_SECRET }}" \
-              -e SENTRY_DSN="${{ secrets.CAAS_SENTRY_DSN }}" \
+              -e DATABASE_URL="$CAAS_DB_URL" \
+              -e RABBITMQ_URL="$CAAS_RABBITMQ_URL" \
+              -e JWT_SECRET="$CAAS_JWT_SECRET" \
+              -e SENTRY_DSN="$CAAS_SENTRY_DSN" \
               -e ENVIRONMENT=production \
               "$IMAGE"
 
@@ -73,12 +81,9 @@ jobs:
 
             # Write version file
             mkdir -p /opt/caas-api
-            cat > /opt/caas-api/version.txt << EOF
-            git_sha=$IMAGE_TAG
-            image=$IMAGE
-            deployed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-            deployed_by=github-actions
-            EOF
+            printf "git_sha=%s\nimage=%s\ndeployed_at=%s\ndeployed_by=github-actions\n" \
+              "$IMAGE_TAG" "$IMAGE" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+              > /opt/caas-api/version.txt
 
             # Prune dangling images
             docker image prune -f
