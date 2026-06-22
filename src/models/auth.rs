@@ -17,6 +17,7 @@ pub struct DeveloperClient {
 
 /// Returned to the developer after registration (one-time — secret is not stored in plaintext)
 #[derive(Debug, Serialize)]
+#[allow(dead_code)]
 pub struct NewClientCredentials {
     pub client_id: String,
     pub client_secret: String, // plaintext — shown once

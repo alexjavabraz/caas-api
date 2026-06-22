@@ -19,6 +19,7 @@ pub fn hash_secret(secret: &str) -> String {
 }
 
 /// Generate a new random client_id (prefix `cid_`) and client_secret (prefix `sk_`).
+#[allow(dead_code)]
 pub fn generate_credentials() -> NewClientCredentials {
     let client_id = format!("cid_{}", Uuid::new_v4().simple());
     let secret_bytes: Vec<u8> = (0..32).map(|_| rand::random::<u8>()).collect();

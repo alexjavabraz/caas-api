@@ -46,7 +46,7 @@ async fn create_user(
             &payload,
         )
         .await
-        .map_err(|e| ApiError::Internal(e))?;
+        .map_err(ApiError::Internal)?;
 
     Ok(Json(CreateUserResponse {
         operation_id,
@@ -81,7 +81,7 @@ async fn add_fiat_balance(
             &payload,
         )
         .await
-        .map_err(|e| ApiError::Internal(e))?;
+        .map_err(ApiError::Internal)?;
 
     Ok(Json(BalanceOperationResponse {
         operation_id,
@@ -117,7 +117,7 @@ async fn add_token_balance(
             &payload,
         )
         .await
-        .map_err(|e| ApiError::Internal(e))?;
+        .map_err(ApiError::Internal)?;
 
     Ok(Json(BalanceOperationResponse {
         operation_id,

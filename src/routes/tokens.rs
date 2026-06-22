@@ -56,7 +56,7 @@ async fn deploy(
             &payload,
         )
         .await
-        .map_err(|e| ApiError::Internal(e))?;
+        .map_err(ApiError::Internal)?;
 
     Ok(Json(OperationResponse {
         operation_id,
@@ -87,7 +87,7 @@ async fn mint(
         .mq
         .publish("TOKEN_EVENT", "token.event.requested", &payload)
         .await
-        .map_err(|e| ApiError::Internal(e))?;
+        .map_err(ApiError::Internal)?;
 
     Ok(Json(OperationResponse {
         operation_id,
@@ -118,7 +118,7 @@ async fn burn(
         .mq
         .publish("TOKEN_EVENT", "token.event.requested", &payload)
         .await
-        .map_err(|e| ApiError::Internal(e))?;
+        .map_err(ApiError::Internal)?;
 
     Ok(Json(OperationResponse {
         operation_id,
@@ -175,7 +175,7 @@ async fn transfer(
         .mq
         .publish("TOKEN_EVENT", "token.event.requested", &payload)
         .await
-        .map_err(|e| ApiError::Internal(e))?;
+        .map_err(ApiError::Internal)?;
 
     Ok(Json(OperationResponse {
         operation_id,
@@ -207,5 +207,5 @@ async fn enqueue_pause(
         .mq
         .publish("TOKEN_EVENT", "token.event.requested", &payload)
         .await
-        .map_err(|e| ApiError::Internal(e))
+        .map_err(ApiError::Internal)
 }

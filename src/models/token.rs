@@ -31,6 +31,7 @@ pub struct DeployTokenRequest {
     pub supply: Option<u64>,
     #[validate(length(min = 42, max = 42))]
     pub owner_address: String,
+    #[allow(dead_code)]
     pub metadata_uri: Option<String>,
     pub idempotency_key: Option<String>,
 }
