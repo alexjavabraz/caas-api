@@ -9,8 +9,8 @@ use validator::Validate;
 use crate::{
     errors::{ApiError, ApiResult},
     models::auth::{
-        Claims, LoginRequest, LoginResponse, MeResponse, NewClientCredentials, RegisterRequest,
-        RequestStats, RotateSecretResponse, TokenRequest,
+        Claims, LoginRequest, LoginResponse, MeResponse, NewClientCredentials,
+        RegenerateSaltResponse, RegisterRequest, RequestStats, RotateSecretResponse, TokenRequest,
     },
     services::auth,
     AppState,
@@ -31,6 +31,7 @@ pub fn protected_router() -> Router<AppState> {
     Router::new()
         .route("/auth/me", get(me))
         .route("/auth/rotate-secret", post(rotate_secret))
+        .route("/auth/regenerate-salt", post(regenerate_salt_handler))
         .route("/auth/requests", get(get_requests))
 }
 
@@ -127,6 +128,16 @@ async fn rotate_secret(
     Extension(claims): Extension<Claims>,
 ) -> ApiResult<Json<RotateSecretResponse>> {
     auth::rotate_secret(&claims.sub, &state.db.pool)
+        .await
+        .map_err(ApiError::Internal)
+        .map(Json)
+}
+
+async fn regenerate_salt_handler(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
+) -> ApiResult<Json<RegenerateSaltResponse>> {
+    auth::regenerate_salt(&claims.sub, &state.db.pool)
         .await
         .map_err(ApiError::Internal)
         .map(Json)

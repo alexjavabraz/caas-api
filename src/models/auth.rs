@@ -11,6 +11,7 @@ pub struct DeveloperClient {
     pub client_id: String,
     pub client_secret_hash: String,
     pub password_hash: String,
+    pub api_salt: String,
     pub is_active: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -18,10 +19,11 @@ pub struct DeveloperClient {
 
 /// Returned to the developer after registration (one-time — secret is not stored in plaintext)
 #[derive(Debug, Serialize)]
-#[allow(dead_code)]
 pub struct NewClientCredentials {
     pub client_id: String,
     pub client_secret: String,
+    /// Signing salt for X-Signature header — generated once and visible in the portal.
+    pub api_salt: String,
 }
 
 /// JWT claims embedded in access tokens
@@ -92,6 +94,7 @@ pub struct MeResponse {
     pub name: String,
     pub email: String,
     pub is_active: bool,
+    pub api_salt: String,
     pub created_at: DateTime<Utc>,
 }
 
@@ -100,6 +103,13 @@ pub struct MeResponse {
 pub struct RotateSecretResponse {
     pub client_id: String,
     pub client_secret: String,
+    pub message: String,
+}
+
+/// POST /v1/auth/regenerate-salt response
+#[derive(Debug, Serialize)]
+pub struct RegenerateSaltResponse {
+    pub api_salt: String,
     pub message: String,
 }
 

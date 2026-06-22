@@ -38,3 +38,32 @@ pub fn is_evm_address(value: &str) -> bool {
 pub fn is_amount_string(value: &str) -> bool {
     !value.is_empty() && value.chars().all(|c| c.is_ascii_digit())
 }
+
+/// Compute the request signature: `sha256(sha256(salt) + sha256(sha256(payload)))`.
+///
+/// All intermediate values are hex-encoded before the outer concatenation.
+pub fn compute_signature(salt: &str, payload: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+
+    // sha256(salt)
+    let salt_hash = hex::encode(Sha256::digest(salt.as_bytes()));
+
+    // sha256(sha256(payload))
+    let payload_hash_1 = hex::encode(Sha256::digest(payload));
+    let payload_hash_2 = hex::encode(Sha256::digest(payload_hash_1.as_bytes()));
+
+    // sha256(sha256(salt) + sha256(sha256(payload)))
+    let concat = format!("{}{}", salt_hash, payload_hash_2);
+    hex::encode(Sha256::digest(concat.as_bytes()))
+}
+
+/// Timing-safe byte comparison (prevents signature oracle attacks).
+pub fn constant_time_eq(a: &str, b: &str) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    a.bytes()
+        .zip(b.bytes())
+        .fold(0u8, |acc, (x, y)| acc | (x ^ y))
+        == 0
+}

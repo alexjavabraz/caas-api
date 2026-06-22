@@ -1,0 +1,2 @@
+ALTER TABLE developer_clients
+    ADD COLUMN IF NOT EXISTS api_salt TEXT NOT NULL DEFAULT '';

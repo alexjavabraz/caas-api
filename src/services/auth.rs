@@ -6,8 +6,8 @@ use uuid::Uuid;
 
 use crate::models::auth::{
     ApiRequestRecord, Claims, DeveloperClient, DeveloperInfo, LoginRequest, LoginResponse,
-    MeResponse, NewClientCredentials, RegisterRequest, RequestStats, RotateSecretResponse,
-    TokenRequest, TokenResponse,
+    MeResponse, NewClientCredentials, RegenerateSaltResponse, RegisterRequest, RequestStats,
+    RotateSecretResponse, TokenRequest, TokenResponse,
 };
 
 const TOKEN_EXPIRY_SECS: i64 = 3600;
@@ -22,7 +22,13 @@ pub fn hash_secret(secret: &str) -> String {
     hex::encode(hasher.finalize())
 }
 
-/// Generate a new random client_id (prefix `cid_`) and client_secret (prefix `sk_`).
+/// Generate a random signing salt (prefix `salt_`).
+pub fn generate_salt() -> String {
+    let bytes: Vec<u8> = (0..32).map(|_| rand::random::<u8>()).collect();
+    format!("salt_{}", hex::encode(bytes))
+}
+
+/// Generate a new random client_id (prefix `cid_`), client_secret (prefix `sk_`), and api_salt.
 pub fn generate_credentials() -> NewClientCredentials {
     let client_id = format!("cid_{}", Uuid::new_v4().simple());
     let secret_bytes: Vec<u8> = (0..32).map(|_| rand::random::<u8>()).collect();
@@ -30,6 +36,7 @@ pub fn generate_credentials() -> NewClientCredentials {
     NewClientCredentials {
         client_id,
         client_secret,
+        api_salt: generate_salt(),
     }
 }
 
@@ -99,14 +106,16 @@ pub async fn register_developer(
         .context("bcrypt hash failed")?;
 
     let result = sqlx::query(
-        "INSERT INTO developer_clients (name, email, client_id, client_secret_hash, password_hash)
-         VALUES ($1, $2, $3, $4, $5)",
+        "INSERT INTO developer_clients \
+         (name, email, client_id, client_secret_hash, password_hash, api_salt) \
+         VALUES ($1, $2, $3, $4, $5, $6)",
     )
     .bind(&req.name)
     .bind(req.email.to_lowercase())
     .bind(&creds.client_id)
     .bind(&secret_hash)
     .bind(&password_hash)
+    .bind(&creds.api_salt)
     .execute(db)
     .await;
 
@@ -165,7 +174,7 @@ pub async fn login_developer(
 /// Fetch a developer's own profile by client_id.
 pub async fn get_me(client_id: &str, db: &sqlx::PgPool) -> anyhow::Result<MeResponse> {
     sqlx::query_as(
-        "SELECT client_id, name, email, is_active, created_at \
+        "SELECT client_id, name, email, is_active, api_salt, created_at \
          FROM developer_clients WHERE client_id = $1",
     )
     .bind(client_id)
@@ -199,9 +208,30 @@ pub async fn rotate_secret(
     })
 }
 
-/// Return request counts and the 50 most-recent records for a developer.
+/// Generate a new signing salt, persist it, and return the plaintext.
+pub async fn regenerate_salt(
+    client_id: &str,
+    db: &sqlx::PgPool,
+) -> anyhow::Result<RegenerateSaltResponse> {
+    let new_salt = generate_salt();
+    sqlx::query(
+        "UPDATE developer_clients SET api_salt = $1, updated_at = NOW() WHERE client_id = $2",
+    )
+    .bind(&new_salt)
+    .bind(client_id)
+    .execute(db)
+    .await?;
+
+    Ok(RegenerateSaltResponse {
+        api_salt: new_salt,
+        message: "Salt regenerated. Update your integration — the previous salt is now invalid."
+            .into(),
+    })
+}
+
+/// Return total request count and the 50 most recent records for a client.
 pub async fn get_request_stats(client_id: &str, db: &sqlx::PgPool) -> anyhow::Result<RequestStats> {
-    let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM api_requests WHERE client_id = $1")
+    let (total,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM api_requests WHERE client_id = $1")
         .bind(client_id)
         .fetch_one(db)
         .await?;
@@ -215,10 +245,7 @@ pub async fn get_request_stats(client_id: &str, db: &sqlx::PgPool) -> anyhow::Re
     .fetch_all(db)
     .await?;
 
-    Ok(RequestStats {
-        total: row.0,
-        requests,
-    })
+    Ok(RequestStats { total, requests })
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
