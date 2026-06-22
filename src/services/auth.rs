@@ -26,7 +26,10 @@ pub fn generate_credentials() -> NewClientCredentials {
     let client_id = format!("cid_{}", Uuid::new_v4().simple());
     let secret_bytes: Vec<u8> = (0..32).map(|_| rand::random::<u8>()).collect();
     let client_secret = format!("sk_{}", hex::encode(secret_bytes));
-    NewClientCredentials { client_id, client_secret }
+    NewClientCredentials {
+        client_id,
+        client_secret,
+    }
 }
 
 /// Issue a JWT access token for a developer client (client_credentials or portal session).
@@ -89,11 +92,10 @@ pub async fn register_developer(
 
     // bcrypt is CPU-intensive — run on a blocking thread
     let password = req.password.clone();
-    let password_hash =
-        tokio::task::spawn_blocking(move || bcrypt::hash(password, BCRYPT_COST))
-            .await
-            .context("bcrypt spawn failed")?
-            .context("bcrypt hash failed")?;
+    let password_hash = tokio::task::spawn_blocking(move || bcrypt::hash(password, BCRYPT_COST))
+        .await
+        .context("bcrypt spawn failed")?
+        .context("bcrypt hash failed")?;
 
     let result = sqlx::query(
         "INSERT INTO developer_clients (name, email, client_id, client_secret_hash, password_hash)
@@ -122,12 +124,11 @@ pub async fn login_developer(
     jwt_secret: &str,
     db: &sqlx::PgPool,
 ) -> anyhow::Result<LoginResponse> {
-    let client: Option<DeveloperClient> = sqlx::query_as(
-        "SELECT * FROM developer_clients WHERE email = $1 AND is_active = true",
-    )
-    .bind(req.email.to_lowercase())
-    .fetch_optional(db)
-    .await?;
+    let client: Option<DeveloperClient> =
+        sqlx::query_as("SELECT * FROM developer_clients WHERE email = $1 AND is_active = true")
+            .bind(req.email.to_lowercase())
+            .fetch_optional(db)
+            .await?;
 
     // Always run bcrypt verify to prevent timing-based user enumeration.
     // Use a dummy hash when the account does not exist.

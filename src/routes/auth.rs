@@ -5,7 +5,9 @@ use validator::Validate;
 
 use crate::{
     errors::{ApiError, ApiResult},
-    models::auth::{LoginRequest, LoginResponse, NewClientCredentials, RegisterRequest, TokenRequest},
+    models::auth::{
+        LoginRequest, LoginResponse, NewClientCredentials, RegisterRequest, TokenRequest,
+    },
     services::auth,
     AppState,
 };
@@ -35,16 +37,18 @@ fn injection_re() -> &'static Regex {
 /// A03 — reject name values that contain injection patterns.
 fn validate_safe_text(value: &str) -> ApiResult<()> {
     if injection_re().is_match(value) {
-        return Err(ApiError::Validation("Input contains invalid characters".into()));
+        return Err(ApiError::Validation(
+            "Input contains invalid characters".into(),
+        ));
     }
     Ok(())
 }
 
 /// A04 — password must contain uppercase, lowercase, digit, and special character.
 fn validate_password_strength(password: &str) -> ApiResult<()> {
-    let has_upper   = password.chars().any(|c| c.is_uppercase());
-    let has_lower   = password.chars().any(|c| c.is_lowercase());
-    let has_digit   = password.chars().any(|c| c.is_ascii_digit());
+    let has_upper = password.chars().any(|c| c.is_uppercase());
+    let has_lower = password.chars().any(|c| c.is_lowercase());
+    let has_digit = password.chars().any(|c| c.is_ascii_digit());
     let has_special = password.chars().any(|c| !c.is_alphanumeric());
 
     if !has_upper || !has_lower || !has_digit || !has_special {
