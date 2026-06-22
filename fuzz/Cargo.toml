@@ -1,0 +1,24 @@
+[package]
+name = "caas-api-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+caas_api = { path = ".." }
+
+[[bin]]
+name = "fuzz_validate_safe_text"
+path = "fuzz_targets/fuzz_validate_safe_text.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_validate_password_strength"
+path = "fuzz_targets/fuzz_validate_password_strength.rs"
+test = false
+doc = false

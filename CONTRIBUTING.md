@@ -70,6 +70,23 @@ cargo run
 - [ ] AMQP messages are validated with the existing schema pipeline
 - [ ] `cargo audit` passes (run locally before submitting)
 
+## Fuzzing
+
+The project uses `cargo-fuzz` (libFuzzer) for dynamic analysis of the input validation functions. Fuzz targets live in `fuzz/fuzz_targets/` and require nightly Rust:
+
+```bash
+rustup install nightly
+cargo install cargo-fuzz
+
+# Fuzz the injection-pattern validator
+cargo +nightly fuzz run fuzz_validate_safe_text
+
+# Fuzz the password-strength validator
+cargo +nightly fuzz run fuzz_validate_password_strength
+```
+
+Fuzzing runs automatically in CI for 30 seconds per target on every push to `main`. If you add new validation functions, add a corresponding fuzz target in `fuzz/fuzz_targets/`.
+
 ## Reporting bugs
 
 Open a [GitHub Issue](https://github.com/alexjavabraz/caas-api/issues) with reproduction steps.

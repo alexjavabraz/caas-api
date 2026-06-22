@@ -5,6 +5,14 @@ edition = "2021"
 description = "Crypto as a Service — REST API for ERC-20/721/1155 token operations"
 license = "MIT"
 
+[lib]
+name = "caas_api"
+path = "src/lib.rs"
+
+[[bin]]
+name = "caas-api"
+path = "src/main.rs"
+
 [dependencies]
 # Web framework
 axum = { version = "0.7", features = ["macros"] }
