@@ -4,7 +4,9 @@
 [![CI](https://github.com/alexjavabraz/caas-api/actions/workflows/ci.yml/badge.svg)](https://github.com/alexjavabraz/caas-api/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-A REST API that lets developers deploy and operate ERC-20, ERC-721, and ERC-1155 tokens on EVM-compatible blockchains without managing wallets or private keys directly. All blockchain operations are published asynchronously to RabbitMQ and executed by a custody backend (DFNS).
+Issuing a token on a blockchain normally requires managing cryptographic wallets, private keys, and low-level smart-contract interactions — a significant barrier for most development teams.
+
+**CaaS API removes that barrier.** It exposes a simple REST API so that any application can deploy and operate tokens (fungible, NFT, or multi-token) on EVM-compatible blockchains with standard HTTP calls — no wallet management, no Solidity knowledge required. Blockchain operations are submitted asynchronously and executed by a secure custody backend (DFNS), while the API returns an `operation_id` immediately so your application stays responsive.
 
 ## What it does
 
