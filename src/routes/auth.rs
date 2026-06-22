@@ -120,3 +120,74 @@ async fn developer_login(
         .map_err(|_| ApiError::Unauthorized)
         .map(Json)
 }
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // validate_safe_text
+
+    #[test]
+    fn safe_text_accepts_normal_name() {
+        assert!(validate_safe_text("Alice Wonderland").is_ok());
+        assert!(validate_safe_text("João Silva").is_ok());
+        assert!(validate_safe_text("O'Brien").is_ok());
+    }
+
+    #[test]
+    fn safe_text_rejects_html_tag() {
+        assert!(validate_safe_text("<script>alert(1)</script>").is_err());
+        assert!(validate_safe_text("<img src=x>").is_err());
+    }
+
+    #[test]
+    fn safe_text_rejects_javascript_uri() {
+        assert!(validate_safe_text("javascript:alert(1)").is_err());
+    }
+
+    #[test]
+    fn safe_text_rejects_event_handler() {
+        assert!(validate_safe_text("foo onmouseover=evil()").is_err());
+    }
+
+    #[test]
+    fn safe_text_rejects_sql_ddl() {
+        assert!(validate_safe_text("'; DROP TABLE users; --").is_err());
+        assert!(validate_safe_text("UNION SELECT * FROM secrets").is_err());
+    }
+
+    #[test]
+    fn safe_text_rejects_path_traversal() {
+        assert!(validate_safe_text("../../etc/passwd").is_err());
+    }
+
+    // validate_password_strength
+
+    #[test]
+    fn password_strength_accepts_valid_password() {
+        assert!(validate_password_strength("Secure#99").is_ok());
+        assert!(validate_password_strength("MyP@ssw0rd!").is_ok());
+    }
+
+    #[test]
+    fn password_strength_rejects_missing_uppercase() {
+        assert!(validate_password_strength("secure#99").is_err());
+    }
+
+    #[test]
+    fn password_strength_rejects_missing_lowercase() {
+        assert!(validate_password_strength("SECURE#99").is_err());
+    }
+
+    #[test]
+    fn password_strength_rejects_missing_digit() {
+        assert!(validate_password_strength("Secure#Ab").is_err());
+    }
+
+    #[test]
+    fn password_strength_rejects_missing_special() {
+        assert!(validate_password_strength("Secure99A").is_err());
+    }
+}

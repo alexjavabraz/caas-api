@@ -160,3 +160,43 @@ pub async fn login_developer(
         },
     })
 }
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hash_secret_is_deterministic() {
+        let h1 = hash_secret("sk_abc123");
+        let h2 = hash_secret("sk_abc123");
+        assert_eq!(h1, h2);
+    }
+
+    #[test]
+    fn hash_secret_differs_for_different_inputs() {
+        assert_ne!(hash_secret("sk_abc"), hash_secret("sk_xyz"));
+    }
+
+    #[test]
+    fn generate_credentials_have_correct_prefixes() {
+        let creds = generate_credentials();
+        assert!(
+            creds.client_id.starts_with("cid_"),
+            "client_id must start with cid_"
+        );
+        assert!(
+            creds.client_secret.starts_with("sk_"),
+            "client_secret must start with sk_"
+        );
+    }
+
+    #[test]
+    fn generate_credentials_are_unique() {
+        let a = generate_credentials();
+        let b = generate_credentials();
+        assert_ne!(a.client_id, b.client_id);
+        assert_ne!(a.client_secret, b.client_secret);
+    }
+}
