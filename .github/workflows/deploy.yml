@@ -29,12 +29,17 @@ jobs:
           CAAS_JWT_SECRET:       ${{ secrets.CAAS_JWT_SECRET }}
           CAAS_SENTRY_DSN:       ${{ secrets.CAAS_SENTRY_DSN }}
           CAAS_REDIS_URL:        ${{ secrets.CAAS_REDIS_URL }}
+          CAAS_SMTP_USERNAME:    ${{ secrets.CAAS_SMTP_USERNAME }}
+          CAAS_SMTP_PASSWORD:    ${{ secrets.CAAS_SMTP_PASSWORD }}
+          CAAS_EMAIL_FROM:       ${{ secrets.CAAS_EMAIL_FROM }}
+          CAAS_PORTAL_BASE_URL:  ${{ secrets.CAAS_PORTAL_BASE_URL }}
+          CAAS_API_BASE_URL:     ${{ secrets.CAAS_API_BASE_URL }}
         with:
           host:     ${{ secrets.CAAS_EC2_HOST }}
           username: ec2-user
           key:      ${{ secrets.EC2_SSH_KEY }}
           timeout:  120s
-          envs:     AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_DEFAULT_REGION,ECR_REGISTRY,IMAGE_TAG,CAAS_DB_URL,CAAS_RABBITMQ_URL,CAAS_JWT_SECRET,CAAS_SENTRY_DSN,CAAS_REDIS_URL
+          envs:     AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_DEFAULT_REGION,ECR_REGISTRY,IMAGE_TAG,CAAS_DB_URL,CAAS_RABBITMQ_URL,CAAS_JWT_SECRET,CAAS_SENTRY_DSN,CAAS_REDIS_URL,CAAS_SMTP_USERNAME,CAAS_SMTP_PASSWORD,CAAS_EMAIL_FROM,CAAS_PORTAL_BASE_URL,CAAS_API_BASE_URL
           script: |
             set -e
 
@@ -68,6 +73,13 @@ jobs:
               -e SENTRY_DSN="$CAAS_SENTRY_DSN" \
               -e REDIS_URL="$CAAS_REDIS_URL" \
               -e ENVIRONMENT=production \
+              -e SMTP_HOST="email-smtp.us-east-1.amazonaws.com" \
+              -e SMTP_PORT="587" \
+              -e SMTP_USERNAME="$CAAS_SMTP_USERNAME" \
+              -e SMTP_PASSWORD="$CAAS_SMTP_PASSWORD" \
+              -e EMAIL_FROM="$CAAS_EMAIL_FROM" \
+              -e PORTAL_BASE_URL="$CAAS_PORTAL_BASE_URL" \
+              -e API_BASE_URL="$CAAS_API_BASE_URL" \
               "$IMAGE"
 
             # Health check (12 × 5s = 60s)
