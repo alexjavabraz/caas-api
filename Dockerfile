@@ -9,7 +9,7 @@ RUN mkdir src && echo "fn main() {}" > src/main.rs && echo "" > src/lib.rs && ca
 
 COPY src ./src
 COPY migrations ./migrations
-RUN touch src/main.rs && cargo build --release
+RUN find src -name "*.rs" | xargs touch && cargo build --release
 
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y ca-certificates libssl3 curl && rm -rf /var/lib/apt/lists/*
