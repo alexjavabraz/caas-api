@@ -1,20 +1,27 @@
 use axum::{
-    extract::{Extension, State},
+    extract::{Extension, Query, State},
     routing::{get, post},
     Json, Router,
 };
 use caas_api::validation::{is_safe_text, is_strong_password};
+use serde::Deserialize;
 use validator::Validate;
 
 use crate::{
     errors::{ApiError, ApiResult},
     models::auth::{
-        Claims, LoginRequest, LoginResponse, MeResponse, NewClientCredentials,
-        RegenerateSaltResponse, RegisterRequest, RequestStats, RotateSecretResponse, TokenRequest,
+        Claims, ForgotPasswordRequest, ForgotPasswordResponse, LoginRequest, LoginResponse,
+        MeResponse, NewClientCredentials, RegenerateSaltResponse, RegisterRequest, RequestStats,
+        RotateSecretResponse, TokenRequest,
     },
-    services::auth,
+    services::auth::{self, EmailConfig},
     AppState,
 };
+
+#[derive(Deserialize)]
+pub struct VerifyEmailQuery {
+    pub token: String,
+}
 
 // ── Public routes (no JWT required) ──────────────────────────────────────────
 
@@ -23,6 +30,8 @@ pub fn router() -> Router<AppState> {
         .route("/token", post(token))
         .route("/register", post(register))
         .route("/developer/login", post(developer_login))
+        .route("/verify-email", get(verify_email))
+        .route("/forgot-password", post(forgot_password))
 }
 
 // ── Protected routes (JWT required — merged into protected router) ────────────
@@ -86,7 +95,8 @@ async fn register(
     validate_safe_text(&body.name)?;
     validate_password_strength(&body.password)?;
 
-    auth::register_developer(body, &state.db.pool)
+    let email_cfg = email_config(&state);
+    auth::register_developer(body, &state.db.pool, &email_cfg)
         .await
         .map_err(|e| {
             if e.to_string() == "EMAIL_CONFLICT" {
@@ -107,8 +117,66 @@ async fn developer_login(
 
     auth::login_developer(body, &state.config.jwt_secret, &state.db.pool)
         .await
-        .map_err(|_| ApiError::Unauthorized)
+        .map_err(|e| {
+            if e.to_string() == "EMAIL_NOT_VERIFIED" {
+                ApiError::Custom(
+                    axum::http::StatusCode::FORBIDDEN,
+                    "EMAIL_NOT_VERIFIED".into(),
+                    "E-mail not verified. Please check your inbox.".into(),
+                )
+            } else {
+                ApiError::Unauthorized
+            }
+        })
         .map(Json)
+}
+
+async fn verify_email(
+    State(state): State<AppState>,
+    Query(q): Query<VerifyEmailQuery>,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    match auth::verify_email(&q.token, &state.db.pool).await {
+        Ok(_) => {
+            let html = r#"<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:60px">
+<h2 style="color:#6c63ff">✓ E-mail confirmado!</h2>
+<p>Sua conta está ativa. <a href="/">Faça login no portal do desenvolvedor</a>.</p>
+</body></html>"#;
+            axum::response::Html(html).into_response()
+        }
+        Err(_) => {
+            let html = r#"<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:60px">
+<h2 style="color:#e53e3e">Link inválido ou expirado</h2>
+<p>Solicite um novo e-mail de verificação fazendo login no portal.</p>
+</body></html>"#;
+            (axum::http::StatusCode::BAD_REQUEST, axum::response::Html(html)).into_response()
+        }
+    }
+}
+
+async fn forgot_password(
+    State(state): State<AppState>,
+    Json(body): Json<ForgotPasswordRequest>,
+) -> ApiResult<Json<ForgotPasswordResponse>> {
+    body.validate()
+        .map_err(|e| ApiError::Validation(e.to_string()))?;
+
+    let email_cfg = email_config(&state);
+    auth::forgot_password(&body, &state.db.pool, &email_cfg)
+        .await
+        .map_err(ApiError::Internal)
+        .map(Json)
+}
+
+fn email_config(state: &AppState) -> EmailConfig<'_> {
+    EmailConfig {
+        smtp_host: &state.config.smtp_host,
+        smtp_port: state.config.smtp_port,
+        smtp_username: state.config.smtp_username.as_deref(),
+        smtp_password: state.config.smtp_password.as_deref(),
+        email_from: &state.config.email_from,
+        portal_base_url: &state.config.portal_base_url,
+    }
 }
 
 // ── Protected handlers ────────────────────────────────────────────────────────

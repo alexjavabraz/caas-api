@@ -13,8 +13,22 @@ pub struct DeveloperClient {
     pub password_hash: String,
     pub api_salt: String,
     pub is_active: bool,
+    pub is_email_verified: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+/// POST /v1/auth/forgot-password request body
+#[derive(Debug, Deserialize, Validate)]
+pub struct ForgotPasswordRequest {
+    #[validate(email, length(max = 254))]
+    pub email: String,
+}
+
+/// POST /v1/auth/forgot-password response
+#[derive(Debug, Serialize)]
+pub struct ForgotPasswordResponse {
+    pub message: String,
 }
 
 /// Returned to the developer after registration (one-time — secret is not stored in plaintext)

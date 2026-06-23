@@ -25,6 +25,8 @@ pub enum ApiError {
     Internal(#[from] anyhow::Error),
     #[error("Database error")]
     Database(#[from] sqlx::Error),
+    #[error("{2}")]
+    Custom(StatusCode, &'static str, String),
 }
 
 impl IntoResponse for ApiError {
@@ -50,6 +52,7 @@ impl IntoResponse for ApiError {
                 "DATABASE_ERROR",
                 "A database error occurred".into(),
             ),
+            ApiError::Custom(status, code, msg) => (*status, *code, msg.clone()),
         };
 
         if status == StatusCode::INTERNAL_SERVER_ERROR {

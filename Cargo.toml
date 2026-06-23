@@ -71,5 +71,8 @@ bcrypt = "0.15"
 # HTTP client
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
 
+# Email (SES via SMTP)
+lettre = { version = "0.11", default-features = false, features = ["tokio1", "tokio1-native-tls", "smtp-transport", "hostname", "builder"] }
+
 [dev-dependencies]
 tokio-test = "0.4"

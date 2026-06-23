@@ -5,13 +5,25 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::models::auth::{
-    ApiRequestRecord, Claims, DeveloperClient, DeveloperInfo, LoginRequest, LoginResponse,
-    MeResponse, NewClientCredentials, RegenerateSaltResponse, RegisterRequest, RequestStats,
-    RotateSecretResponse, TokenRequest, TokenResponse,
+    ApiRequestRecord, Claims, DeveloperClient, DeveloperInfo, ForgotPasswordRequest,
+    ForgotPasswordResponse, LoginRequest, LoginResponse, MeResponse, NewClientCredentials,
+    RegenerateSaltResponse, RegisterRequest, RequestStats, RotateSecretResponse, TokenRequest,
+    TokenResponse,
 };
+use crate::services::email;
 
 const TOKEN_EXPIRY_SECS: i64 = 3600;
 const BCRYPT_COST: u32 = 12;
+const VERIFICATION_TTL_SECS: i64 = 86_400; // 24 h
+
+pub struct EmailConfig<'a> {
+    pub smtp_host: &'a str,
+    pub smtp_port: u16,
+    pub smtp_username: Option<&'a str>,
+    pub smtp_password: Option<&'a str>,
+    pub email_from: &'a str,
+    pub portal_base_url: &'a str,
+}
 
 /// Hash a high-entropy API client secret with SHA-256.
 /// SHA-256 is acceptable here because client secrets are 32 random bytes —
@@ -94,9 +106,13 @@ pub async fn authenticate(
 pub async fn register_developer(
     req: RegisterRequest,
     db: &sqlx::PgPool,
+    email_cfg: &EmailConfig<'_>,
 ) -> anyhow::Result<NewClientCredentials> {
     let creds = generate_credentials();
     let secret_hash = hash_secret(&creds.client_secret);
+
+    let verification_token = Uuid::new_v4().to_string();
+    let verification_expires = Utc::now() + chrono::Duration::seconds(VERIFICATION_TTL_SECS);
 
     // bcrypt is CPU-intensive — run on a blocking thread
     let password = req.password.clone();
@@ -107,8 +123,9 @@ pub async fn register_developer(
 
     let result = sqlx::query(
         "INSERT INTO developer_clients \
-         (name, email, client_id, client_secret_hash, password_hash, api_salt) \
-         VALUES ($1, $2, $3, $4, $5, $6)",
+         (name, email, client_id, client_secret_hash, password_hash, api_salt, \
+          is_email_verified, email_verification_token, email_verification_expires_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, FALSE, $7, $8)",
     )
     .bind(&req.name)
     .bind(req.email.to_lowercase())
@@ -116,11 +133,34 @@ pub async fn register_developer(
     .bind(&secret_hash)
     .bind(&password_hash)
     .bind(&creds.api_salt)
+    .bind(&verification_token)
+    .bind(verification_expires)
     .execute(db)
     .await;
 
     match result {
-        Ok(_) => Ok(creds),
+        Ok(_) => {
+            let verify_url = format!(
+                "{}/verify-email?token={}",
+                email_cfg.portal_base_url, verification_token
+            );
+            let html = email::verification_html(&req.name, &verify_url);
+            email::log_if_err(
+                email::send(
+                    email_cfg.smtp_host,
+                    email_cfg.smtp_port,
+                    email_cfg.smtp_username,
+                    email_cfg.smtp_password,
+                    email_cfg.email_from,
+                    &req.email.to_lowercase(),
+                    "Confirme seu e-mail — CaaS Developer Portal",
+                    &html,
+                )
+                .await,
+                "email_verification_send",
+            );
+            Ok(creds)
+        }
         Err(sqlx::Error::Database(ref e)) if e.code().as_deref() == Some("23505") => {
             Err(anyhow::anyhow!("EMAIL_CONFLICT"))
         }
@@ -158,6 +198,10 @@ pub async fn login_developer(
     let client = client
         .filter(|_| valid)
         .ok_or_else(|| anyhow::anyhow!("Invalid credentials"))?;
+
+    if !client.is_email_verified {
+        anyhow::bail!("EMAIL_NOT_VERIFIED");
+    }
 
     let token_resp = issue_token(&client, jwt_secret)?;
 
@@ -246,6 +290,87 @@ pub async fn get_request_stats(client_id: &str, db: &sqlx::PgPool) -> anyhow::Re
     .await?;
 
     Ok(RequestStats { total, requests })
+}
+
+/// Confirm a developer's email address using the token from the verification email.
+pub async fn verify_email(token: &str, db: &sqlx::PgPool) -> anyhow::Result<()> {
+    let result = sqlx::query(
+        "UPDATE developer_clients \
+         SET is_email_verified = TRUE, \
+             email_verification_token = NULL, \
+             email_verification_expires_at = NULL, \
+             updated_at = NOW() \
+         WHERE email_verification_token = $1 \
+           AND email_verification_expires_at > NOW() \
+           AND is_email_verified = FALSE",
+    )
+    .bind(token)
+    .execute(db)
+    .await?;
+
+    if result.rows_affected() == 0 {
+        anyhow::bail!("INVALID_OR_EXPIRED_TOKEN");
+    }
+    Ok(())
+}
+
+/// Reset a developer's password and send a temporary one via email.
+pub async fn forgot_password(
+    req: &ForgotPasswordRequest,
+    db: &sqlx::PgPool,
+    email_cfg: &EmailConfig<'_>,
+) -> anyhow::Result<ForgotPasswordResponse> {
+    let email_lower = req.email.to_lowercase();
+
+    let client: Option<(String, String)> =
+        sqlx::query_as("SELECT client_id, name FROM developer_clients WHERE email = $1 AND is_active = TRUE")
+            .bind(&email_lower)
+            .fetch_optional(db)
+            .await?;
+
+    // Always return success to avoid user enumeration
+    if let Some((client_id, name)) = client {
+        let temp_password = generate_temp_password();
+        let password_clone = temp_password.clone();
+        let new_hash = tokio::task::spawn_blocking(move || bcrypt::hash(password_clone, BCRYPT_COST))
+            .await
+            .context("bcrypt spawn")?
+            .context("bcrypt hash")?;
+
+        sqlx::query(
+            "UPDATE developer_clients SET password_hash = $1, updated_at = NOW() WHERE client_id = $2",
+        )
+        .bind(&new_hash)
+        .bind(&client_id)
+        .execute(db)
+        .await?;
+
+        let html = email::temp_password_html(&name, &temp_password);
+        email::log_if_err(
+            email::send(
+                email_cfg.smtp_host,
+                email_cfg.smtp_port,
+                email_cfg.smtp_username,
+                email_cfg.smtp_password,
+                email_cfg.email_from,
+                &email_lower,
+                "Sua senha provisória — CaaS Developer Portal",
+                &html,
+            )
+            .await,
+            "forgot_password_send",
+        );
+    }
+
+    Ok(ForgotPasswordResponse {
+        message: "Se este e-mail estiver cadastrado, você receberá uma senha provisória em breve."
+            .into(),
+    })
+}
+
+fn generate_temp_password() -> String {
+    let suffix: Vec<u8> = (0..8).map(|_| rand::random::<u8>()).collect();
+    format!("Tmp@{}", hex::encode(suffix))
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
