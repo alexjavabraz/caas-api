@@ -15,6 +15,7 @@ pub struct AppConfig {
     pub smtp_password: Option<String>,
     pub email_from: String,
     pub portal_base_url: String,
+    pub api_base_url: String,
 }
 
 impl AppConfig {
@@ -43,6 +44,8 @@ impl AppConfig {
                 .unwrap_or_else(|_| "noreply@tokeniza.online".into()),
             portal_base_url: std::env::var("PORTAL_BASE_URL")
                 .unwrap_or_else(|_| "https://portal.tokeniza.online".into()),
+            api_base_url: std::env::var("API_BASE_URL")
+                .unwrap_or_else(|_| "https://caas.tokeniza.online".into()),
         })
     }
 

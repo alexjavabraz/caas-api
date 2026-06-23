@@ -23,6 +23,7 @@ pub struct EmailConfig<'a> {
     pub smtp_password: Option<&'a str>,
     pub email_from: &'a str,
     pub portal_base_url: &'a str,
+    pub api_base_url: &'a str,
 }
 
 /// Hash a high-entropy API client secret with SHA-256.
@@ -141,8 +142,8 @@ pub async fn register_developer(
     match result {
         Ok(_) => {
             let verify_url = format!(
-                "{}/verify-email?token={}",
-                email_cfg.portal_base_url, verification_token
+                "{}/v1/auth/verify-email?token={}",
+                email_cfg.api_base_url, verification_token
             );
             let html = email::verification_html(&req.name, &verify_url);
             email::log_if_err(

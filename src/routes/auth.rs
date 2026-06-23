@@ -136,21 +136,16 @@ async fn verify_email(
     Query(q): Query<VerifyEmailQuery>,
 ) -> axum::response::Response {
     use axum::response::IntoResponse;
+    let portal = &state.config.portal_base_url;
     match auth::verify_email(&q.token, &state.db.pool).await {
-        Ok(_) => {
-            let html = r#"<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:60px">
-<h2 style="color:#6c63ff">✓ E-mail confirmado!</h2>
-<p>Sua conta está ativa. <a href="/">Faça login no portal do desenvolvedor</a>.</p>
-</body></html>"#;
-            axum::response::Html(html).into_response()
-        }
-        Err(_) => {
-            let html = r#"<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:60px">
-<h2 style="color:#e53e3e">Link inválido ou expirado</h2>
-<p>Solicite um novo e-mail de verificação fazendo login no portal.</p>
-</body></html>"#;
-            (axum::http::StatusCode::BAD_REQUEST, axum::response::Html(html)).into_response()
-        }
+        Ok(_) => axum::response::Redirect::to(
+            &format!("{}/login?verified=true", portal),
+        )
+        .into_response(),
+        Err(_) => axum::response::Redirect::to(
+            &format!("{}/login?error=token_invalid", portal),
+        )
+        .into_response(),
     }
 }
 
@@ -176,6 +171,7 @@ fn email_config(state: &AppState) -> EmailConfig<'_> {
         smtp_password: state.config.smtp_password.as_deref(),
         email_from: &state.config.email_from,
         portal_base_url: &state.config.portal_base_url,
+        api_base_url: &state.config.api_base_url,
     }
 }
 
