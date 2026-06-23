@@ -43,7 +43,7 @@ impl AppConfig {
             email_from: std::env::var("EMAIL_FROM")
                 .unwrap_or_else(|_| "noreply@tokeniza.online".into()),
             portal_base_url: std::env::var("PORTAL_BASE_URL")
-                .unwrap_or_else(|_| "https://portal.tokeniza.online".into()),
+                .unwrap_or_else(|_| "https://developers.tokeniza.online".into()),
             api_base_url: std::env::var("API_BASE_URL")
                 .unwrap_or_else(|_| "https://caas.tokeniza.online".into()),
         })
