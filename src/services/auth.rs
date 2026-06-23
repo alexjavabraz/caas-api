@@ -562,6 +562,47 @@ pub async fn forgot_password(
     })
 }
 
+pub async fn change_password(
+    client_id: &str,
+    current_password: &str,
+    new_password: &str,
+    db: &sqlx::PgPool,
+) -> anyhow::Result<()> {
+    let client: DeveloperClient =
+        sqlx::query_as("SELECT * FROM developer_clients WHERE client_id = $1 AND is_active = TRUE")
+            .bind(client_id)
+            .fetch_optional(db)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("NOT_FOUND"))?;
+
+    let stored_hash = client.password_hash.clone();
+    let current = current_password.to_owned();
+    let matches = tokio::task::spawn_blocking(move || bcrypt::verify(&current, &stored_hash))
+        .await
+        .context("bcrypt spawn")?
+        .context("bcrypt verify")?;
+
+    if !matches {
+        anyhow::bail!("INVALID_CURRENT_PASSWORD");
+    }
+
+    let new_pass = new_password.to_owned();
+    let new_hash = tokio::task::spawn_blocking(move || bcrypt::hash(new_pass, BCRYPT_COST))
+        .await
+        .context("bcrypt spawn")?
+        .context("bcrypt hash")?;
+
+    sqlx::query(
+        "UPDATE developer_clients SET password_hash = $1, updated_at = NOW() WHERE client_id = $2",
+    )
+    .bind(&new_hash)
+    .bind(client_id)
+    .execute(db)
+    .await?;
+
+    Ok(())
+}
+
 fn generate_temp_password() -> String {
     let suffix: Vec<u8> = (0..8).map(|_| rand::random::<u8>()).collect();
     format!("Tmp@{}", hex::encode(suffix))

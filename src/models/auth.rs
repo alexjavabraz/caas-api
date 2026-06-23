@@ -161,6 +161,15 @@ pub enum DeveloperLoginResult {
     },
 }
 
+/// POST /v1/auth/change-password
+#[derive(Debug, Deserialize, Validate)]
+pub struct ChangePasswordRequest {
+    #[validate(length(min = 1, max = 128))]
+    pub current_password: String,
+    #[validate(length(min = 8, max = 128))]
+    pub new_password: String,
+}
+
 /// POST /v1/auth/rotate-secret response (one-time plaintext)
 #[derive(Debug, Serialize)]
 pub struct RotateSecretResponse {

@@ -11,10 +11,10 @@ use validator::Validate;
 use crate::{
     errors::{ApiError, ApiResult},
     models::auth::{
-        Claims, DeveloperLoginResult, ForgotPasswordRequest, ForgotPasswordResponse, LoginRequest,
-        MeResponse, NewClientCredentials, RegenerateSaltResponse, RegisterRequest, RequestStats,
-        RotateSecretResponse, TokenRequest, TotpConfirmRequest, TotpDisableRequest,
-        TotpSetupResponse, TotpVerifyLoginRequest,
+        ChangePasswordRequest, Claims, DeveloperLoginResult, ForgotPasswordRequest,
+        ForgotPasswordResponse, LoginRequest, MeResponse, NewClientCredentials,
+        RegenerateSaltResponse, RegisterRequest, RequestStats, RotateSecretResponse, TokenRequest,
+        TotpConfirmRequest, TotpDisableRequest, TotpSetupResponse, TotpVerifyLoginRequest,
     },
     services::{
         auth::{self, EmailConfig},
@@ -51,6 +51,7 @@ pub fn protected_router() -> Router<AppState> {
         .route("/auth/totp/setup", post(totp_setup))
         .route("/auth/totp/confirm", post(totp_confirm))
         .route("/auth/totp/disable", post(totp_disable))
+        .route("/auth/change-password", post(change_password_handler))
 }
 
 // ── Validation helpers ────────────────────────────────────────────────────────
@@ -350,6 +351,40 @@ async fn totp_disable(
             }
         })?;
     Ok(Json(serde_json::json!({ "totp_enabled": false })))
+}
+
+async fn change_password_handler(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
+    Json(body): Json<ChangePasswordRequest>,
+) -> ApiResult<Json<serde_json::Value>> {
+    body.validate()
+        .map_err(|e| ApiError::Validation(e.to_string()))?;
+
+    validate_password_strength(&body.new_password)?;
+
+    auth::change_password(
+        &claims.sub,
+        &body.current_password,
+        &body.new_password,
+        &state.db.pool,
+    )
+    .await
+    .map_err(|e| {
+        if e.to_string() == "INVALID_CURRENT_PASSWORD" {
+            ApiError::Custom(
+                axum::http::StatusCode::UNPROCESSABLE_ENTITY,
+                "INVALID_CURRENT_PASSWORD",
+                "Senha atual incorreta.".into(),
+            )
+        } else {
+            ApiError::Internal(e)
+        }
+    })?;
+
+    Ok(Json(
+        serde_json::json!({ "message": "Password changed successfully" }),
+    ))
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
