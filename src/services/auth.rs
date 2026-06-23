@@ -532,7 +532,7 @@ pub async fn forgot_password(
                 .context("bcrypt hash")?;
 
         sqlx::query(
-            "UPDATE developer_clients SET password_hash = $1, updated_at = NOW() WHERE client_id = $2",
+            "UPDATE developer_clients SET password_hash = $1, is_email_verified = TRUE, updated_at = NOW() WHERE client_id = $2",
         )
         .bind(&new_hash)
         .bind(&client_id)
