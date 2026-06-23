@@ -7,6 +7,7 @@ use tracing::{error, warn};
 
 /// Send an HTML email via SES SMTP. Returns Ok(()) even on failure when
 /// SMTP credentials are not configured (dev/test environments).
+#[allow(clippy::too_many_arguments)]
 pub async fn send(
     smtp_host: &str,
     smtp_port: u16,
@@ -62,20 +63,6 @@ pub fn temp_password_html(name: &str, temp_password: &str) -> String {
 <p style="font-size:20px;font-weight:bold;letter-spacing:2px;background:#f4f4f4;padding:12px 20px;border-radius:6px;display:inline-block">{temp_password}</p>
 <p>Acesse o portal e altere esta senha assim que possível.</p>
 <p style="color:#888;font-size:13px">Se não solicitou a redefinição, entre em contato imediatamente.</p>
-<p style="color:#888;font-size:11px">tokeniza.online</p>
-</body></html>"#
-    )
-}
-
-pub fn temp_password_cognito_html(temp_password: &str) -> String {
-    format!(
-        r#"<!DOCTYPE html><html><body style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
-<h2 style="color:#6c63ff">Redefinição de senha — BRLN</h2>
-<p>Recebemos uma solicitação de redefinição de senha para sua conta.</p>
-<p>Sua senha provisória é:</p>
-<p style="font-size:20px;font-weight:bold;letter-spacing:2px;background:#f4f4f4;padding:12px 20px;border-radius:6px;display:inline-block">{temp_password}</p>
-<p>Acesse o app e troque esta senha no primeiro login.</p>
-<p style="color:#888;font-size:13px">Se não solicitou a redefinição, ignore este e-mail.</p>
 <p style="color:#888;font-size:11px">tokeniza.online</p>
 </body></html>"#
     )

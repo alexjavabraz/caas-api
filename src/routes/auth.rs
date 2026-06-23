@@ -121,7 +121,7 @@ async fn developer_login(
             if e.to_string() == "EMAIL_NOT_VERIFIED" {
                 ApiError::Custom(
                     axum::http::StatusCode::FORBIDDEN,
-                    "EMAIL_NOT_VERIFIED".into(),
+                    "EMAIL_NOT_VERIFIED",
                     "E-mail not verified. Please check your inbox.".into(),
                 )
             } else {
@@ -167,7 +167,6 @@ fn email_config(state: &AppState) -> EmailConfig<'_> {
         smtp_username: state.config.smtp_username.as_deref(),
         smtp_password: state.config.smtp_password.as_deref(),
         email_from: &state.config.email_from,
-        portal_base_url: &state.config.portal_base_url,
         api_base_url: &state.config.api_base_url,
     }
 }

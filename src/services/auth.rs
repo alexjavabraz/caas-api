@@ -22,7 +22,6 @@ pub struct EmailConfig<'a> {
     pub smtp_username: Option<&'a str>,
     pub smtp_password: Option<&'a str>,
     pub email_from: &'a str,
-    pub portal_base_url: &'a str,
     pub api_base_url: &'a str,
 }
 
