@@ -138,14 +138,11 @@ async fn verify_email(
     use axum::response::IntoResponse;
     let portal = &state.config.portal_base_url;
     match auth::verify_email(&q.token, &state.db.pool).await {
-        Ok(_) => axum::response::Redirect::to(
-            &format!("{}/login?verified=true", portal),
-        )
-        .into_response(),
-        Err(_) => axum::response::Redirect::to(
-            &format!("{}/login?error=token_invalid", portal),
-        )
-        .into_response(),
+        Ok(_) => {
+            axum::response::Redirect::to(&format!("{}/login?verified=true", portal)).into_response()
+        }
+        Err(_) => axum::response::Redirect::to(&format!("{}/login?error=token_invalid", portal))
+            .into_response(),
     }
 }
 

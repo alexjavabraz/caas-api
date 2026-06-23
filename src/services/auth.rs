@@ -323,20 +323,22 @@ pub async fn forgot_password(
 ) -> anyhow::Result<ForgotPasswordResponse> {
     let email_lower = req.email.to_lowercase();
 
-    let client: Option<(String, String)> =
-        sqlx::query_as("SELECT client_id, name FROM developer_clients WHERE email = $1 AND is_active = TRUE")
-            .bind(&email_lower)
-            .fetch_optional(db)
-            .await?;
+    let client: Option<(String, String)> = sqlx::query_as(
+        "SELECT client_id, name FROM developer_clients WHERE email = $1 AND is_active = TRUE",
+    )
+    .bind(&email_lower)
+    .fetch_optional(db)
+    .await?;
 
     // Always return success to avoid user enumeration
     if let Some((client_id, name)) = client {
         let temp_password = generate_temp_password();
         let password_clone = temp_password.clone();
-        let new_hash = tokio::task::spawn_blocking(move || bcrypt::hash(password_clone, BCRYPT_COST))
-            .await
-            .context("bcrypt spawn")?
-            .context("bcrypt hash")?;
+        let new_hash =
+            tokio::task::spawn_blocking(move || bcrypt::hash(password_clone, BCRYPT_COST))
+                .await
+                .context("bcrypt spawn")?
+                .context("bcrypt hash")?;
 
         sqlx::query(
             "UPDATE developer_clients SET password_hash = $1, updated_at = NOW() WHERE client_id = $2",
