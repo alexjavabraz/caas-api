@@ -1,20 +1,23 @@
 use anyhow::Context;
 use chrono::Utc;
-use jsonwebtoken::{encode, EncodingKey, Header};
+use data_encoding::BASE32_NOPAD;
+use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use sha2::{Digest, Sha256};
+use totp_rs::{Algorithm, TOTP};
 use uuid::Uuid;
 
 use crate::models::auth::{
-    ApiRequestRecord, Claims, DeveloperClient, DeveloperInfo, ForgotPasswordRequest,
-    ForgotPasswordResponse, LoginRequest, LoginResponse, MeResponse, NewClientCredentials,
-    RegenerateSaltResponse, RegisterRequest, RequestStats, RotateSecretResponse, TokenRequest,
-    TokenResponse,
+    ApiRequestRecord, ChallengeClaims, Claims, DeveloperClient, DeveloperInfo,
+    DeveloperLoginResult, ForgotPasswordRequest, ForgotPasswordResponse, LoginRequest,
+    LoginResponse, MeResponse, NewClientCredentials, RegenerateSaltResponse, RegisterRequest,
+    RequestStats, RotateSecretResponse, TokenRequest, TokenResponse, TotpSetupResponse,
 };
 use crate::services::email;
 
 const TOKEN_EXPIRY_SECS: i64 = 3600;
 const BCRYPT_COST: u32 = 12;
 const VERIFICATION_TTL_SECS: i64 = 86_400; // 24 h
+const CHALLENGE_EXPIRY_SECS: i64 = 300; // 5 min — TOTP challenge window
 
 pub struct EmailConfig<'a> {
     pub smtp_host: &'a str,
@@ -168,12 +171,13 @@ pub async fn register_developer(
     }
 }
 
-/// Authenticate a developer with email + password, returning a portal JWT.
+/// Authenticate a developer with email + password.
+/// Returns either a full session or a TOTP challenge when 2FA is enabled.
 pub async fn login_developer(
     req: LoginRequest,
     jwt_secret: &str,
     db: &sqlx::PgPool,
-) -> anyhow::Result<LoginResponse> {
+) -> anyhow::Result<DeveloperLoginResult> {
     let client: Option<DeveloperClient> =
         sqlx::query_as("SELECT * FROM developer_clients WHERE email = $1 AND is_active = true")
             .bind(req.email.to_lowercase())
@@ -181,7 +185,6 @@ pub async fn login_developer(
             .await?;
 
     // Always run bcrypt verify to prevent timing-based user enumeration.
-    // Use a dummy hash when the account does not exist.
     let dummy = "$2b$12$invalidhashforenumerationprotect";
     let stored_hash = client
         .as_ref()
@@ -203,8 +206,197 @@ pub async fn login_developer(
         anyhow::bail!("EMAIL_NOT_VERIFIED");
     }
 
-    let token_resp = issue_token(&client, jwt_secret)?;
+    // If 2FA is enabled issue a short-lived challenge token; the frontend
+    // must then call POST /v1/auth/totp/verify-login to get the full JWT.
+    if client.totp_enabled {
+        let challenge = issue_challenge_token(&client.client_id, jwt_secret)?;
+        return Ok(DeveloperLoginResult::TotpChallenge {
+            totp_required: true,
+            challenge_token: challenge,
+        });
+    }
 
+    let token_resp = issue_token(&client, jwt_secret)?;
+    Ok(DeveloperLoginResult::Success(LoginResponse {
+        access_token: token_resp.access_token,
+        developer: DeveloperInfo {
+            client_id: client.client_id,
+            name: client.name,
+            email: client.email,
+        },
+    }))
+}
+
+fn issue_challenge_token(client_id: &str, jwt_secret: &str) -> anyhow::Result<String> {
+    let now = Utc::now().timestamp();
+    let claims = ChallengeClaims {
+        sub: client_id.to_string(),
+        purpose: "totp_challenge".to_string(),
+        exp: now + CHALLENGE_EXPIRY_SECS,
+        iat: now,
+    };
+    encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret(jwt_secret.as_bytes()),
+    )
+    .context("Failed to sign challenge JWT")
+}
+
+fn verify_totp_code(secret_base32: &str, code: &str, email: &str) -> anyhow::Result<bool> {
+    let bytes = BASE32_NOPAD
+        .decode(secret_base32.to_uppercase().as_bytes())
+        .context("Invalid TOTP secret encoding")?;
+    let totp = TOTP::new(
+        Algorithm::SHA1,
+        6,
+        1,
+        30,
+        bytes,
+        Some("CaaS".to_string()),
+        email.to_string(),
+    )
+    .map_err(|e| anyhow::anyhow!("TOTP init: {e}"))?;
+    totp.check_current(code).context("TOTP system time error")
+}
+
+/// Begin TOTP setup: generate a new secret and persist it (not yet enabled).
+pub async fn totp_setup(client_id: &str, db: &sqlx::PgPool) -> anyhow::Result<TotpSetupResponse> {
+    let (email,): (String,) =
+        sqlx::query_as("SELECT email FROM developer_clients WHERE client_id = $1")
+            .bind(client_id)
+            .fetch_one(db)
+            .await?;
+
+    let secret_bytes: Vec<u8> = (0..20).map(|_| rand::random::<u8>()).collect();
+    let secret_base32 = BASE32_NOPAD.encode(&secret_bytes);
+
+    sqlx::query(
+        "UPDATE developer_clients SET totp_secret = $1, updated_at = NOW() WHERE client_id = $2",
+    )
+    .bind(&secret_base32)
+    .bind(client_id)
+    .execute(db)
+    .await?;
+
+    let totp = TOTP::new(
+        Algorithm::SHA1,
+        6,
+        1,
+        30,
+        secret_bytes,
+        Some("CaaS".to_string()),
+        email,
+    )
+    .map_err(|e| anyhow::anyhow!("TOTP init: {e}"))?;
+
+    Ok(TotpSetupResponse {
+        otpauth_uri: totp.get_url(),
+        totp_enabled: false,
+    })
+}
+
+/// Confirm a TOTP code and enable 2FA for the account.
+pub async fn totp_confirm(client_id: &str, code: &str, db: &sqlx::PgPool) -> anyhow::Result<()> {
+    let client: DeveloperClient =
+        sqlx::query_as("SELECT * FROM developer_clients WHERE client_id = $1 AND is_active = true")
+            .bind(client_id)
+            .fetch_one(db)
+            .await?;
+
+    let secret = client
+        .totp_secret
+        .as_deref()
+        .ok_or_else(|| anyhow::anyhow!("TOTP_NOT_INITIALIZED"))?;
+
+    if !verify_totp_code(secret, code, &client.email)? {
+        anyhow::bail!("INVALID_TOTP_CODE");
+    }
+
+    sqlx::query(
+        "UPDATE developer_clients SET totp_enabled = TRUE, updated_at = NOW() WHERE client_id = $1",
+    )
+    .bind(client_id)
+    .execute(db)
+    .await?;
+
+    Ok(())
+}
+
+/// Verify a TOTP code and disable 2FA.
+pub async fn totp_disable(client_id: &str, code: &str, db: &sqlx::PgPool) -> anyhow::Result<()> {
+    let client: DeveloperClient =
+        sqlx::query_as("SELECT * FROM developer_clients WHERE client_id = $1 AND is_active = true")
+            .bind(client_id)
+            .fetch_one(db)
+            .await?;
+
+    if !client.totp_enabled {
+        anyhow::bail!("TOTP_NOT_ENABLED");
+    }
+
+    let secret = client
+        .totp_secret
+        .as_deref()
+        .ok_or_else(|| anyhow::anyhow!("TOTP_NOT_INITIALIZED"))?;
+
+    if !verify_totp_code(secret, code, &client.email)? {
+        anyhow::bail!("INVALID_TOTP_CODE");
+    }
+
+    sqlx::query(
+        "UPDATE developer_clients \
+         SET totp_enabled = FALSE, totp_secret = NULL, updated_at = NOW() \
+         WHERE client_id = $1",
+    )
+    .bind(client_id)
+    .execute(db)
+    .await?;
+
+    Ok(())
+}
+
+/// Exchange a TOTP challenge token + code for a full login session.
+pub async fn totp_verify_login(
+    challenge_token: &str,
+    code: &str,
+    jwt_secret: &str,
+    db: &sqlx::PgPool,
+) -> anyhow::Result<LoginResponse> {
+    let decoded = decode::<ChallengeClaims>(
+        challenge_token,
+        &DecodingKey::from_secret(jwt_secret.as_bytes()),
+        &Validation::default(),
+    )
+    .map_err(|_| anyhow::anyhow!("INVALID_CHALLENGE_TOKEN"))?;
+
+    if decoded.claims.purpose != "totp_challenge" {
+        anyhow::bail!("INVALID_CHALLENGE_TOKEN");
+    }
+
+    let client_id = decoded.claims.sub;
+
+    let client: DeveloperClient =
+        sqlx::query_as("SELECT * FROM developer_clients WHERE client_id = $1 AND is_active = true")
+            .bind(&client_id)
+            .fetch_one(db)
+            .await
+            .map_err(|_| anyhow::anyhow!("INVALID_CHALLENGE_TOKEN"))?;
+
+    if !client.totp_enabled {
+        anyhow::bail!("TOTP_NOT_ENABLED");
+    }
+
+    let secret = client
+        .totp_secret
+        .as_deref()
+        .ok_or_else(|| anyhow::anyhow!("INVALID_CHALLENGE_TOKEN"))?;
+
+    if !verify_totp_code(secret, code, &client.email)? {
+        anyhow::bail!("INVALID_TOTP_CODE");
+    }
+
+    let token_resp = issue_token(&client, jwt_secret)?;
     Ok(LoginResponse {
         access_token: token_resp.access_token,
         developer: DeveloperInfo {
@@ -218,7 +410,7 @@ pub async fn login_developer(
 /// Fetch a developer's own profile by client_id.
 pub async fn get_me(client_id: &str, db: &sqlx::PgPool) -> anyhow::Result<MeResponse> {
     sqlx::query_as(
-        "SELECT client_id, name, email, is_active, api_salt, created_at \
+        "SELECT client_id, name, email, is_active, api_salt, totp_enabled, created_at \
          FROM developer_clients WHERE client_id = $1",
     )
     .bind(client_id)

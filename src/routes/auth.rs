@@ -4,17 +4,22 @@ use axum::{
     Json, Router,
 };
 use caas_api::validation::{is_safe_text, is_strong_password};
+use chrono::Utc;
 use serde::Deserialize;
 use validator::Validate;
 
 use crate::{
     errors::{ApiError, ApiResult},
     models::auth::{
-        Claims, ForgotPasswordRequest, ForgotPasswordResponse, LoginRequest, LoginResponse,
+        Claims, DeveloperLoginResult, ForgotPasswordRequest, ForgotPasswordResponse, LoginRequest,
         MeResponse, NewClientCredentials, RegenerateSaltResponse, RegisterRequest, RequestStats,
-        RotateSecretResponse, TokenRequest,
+        RotateSecretResponse, TokenRequest, TotpConfirmRequest, TotpDisableRequest,
+        TotpSetupResponse, TotpVerifyLoginRequest,
     },
-    services::auth::{self, EmailConfig},
+    services::{
+        auth::{self, EmailConfig},
+        email,
+    },
     AppState,
 };
 
@@ -32,6 +37,7 @@ pub fn router() -> Router<AppState> {
         .route("/developer/login", post(developer_login))
         .route("/verify-email", get(verify_email))
         .route("/forgot-password", post(forgot_password))
+        .route("/totp/verify-login", post(totp_verify_login))
 }
 
 // ── Protected routes (JWT required — merged into protected router) ────────────
@@ -42,6 +48,9 @@ pub fn protected_router() -> Router<AppState> {
         .route("/auth/rotate-secret", post(rotate_secret))
         .route("/auth/regenerate-salt", post(regenerate_salt_handler))
         .route("/auth/requests", get(get_requests))
+        .route("/auth/totp/setup", post(totp_setup))
+        .route("/auth/totp/confirm", post(totp_confirm))
+        .route("/auth/totp/disable", post(totp_disable))
 }
 
 // ── Validation helpers ────────────────────────────────────────────────────────
@@ -111,11 +120,11 @@ async fn register(
 async fn developer_login(
     State(state): State<AppState>,
     Json(body): Json<LoginRequest>,
-) -> ApiResult<Json<LoginResponse>> {
+) -> ApiResult<Json<DeveloperLoginResult>> {
     body.validate()
         .map_err(|e| ApiError::Validation(e.to_string()))?;
 
-    auth::login_developer(body, &state.config.jwt_secret, &state.db.pool)
+    let result = auth::login_developer(body, &state.config.jwt_secret, &state.db.pool)
         .await
         .map_err(|e| {
             if e.to_string() == "EMAIL_NOT_VERIFIED" {
@@ -127,8 +136,86 @@ async fn developer_login(
             } else {
                 ApiError::Unauthorized
             }
-        })
-        .map(Json)
+        })?;
+
+    if let DeveloperLoginResult::Success(ref resp) = result {
+        let smtp_host = state.config.smtp_host.clone();
+        let smtp_port = state.config.smtp_port;
+        let smtp_user = state.config.smtp_username.clone();
+        let smtp_pass = state.config.smtp_password.clone();
+        let email_from = state.config.email_from.clone();
+        let name = resp.developer.name.clone();
+        let to = resp.developer.email.clone();
+        let time_str = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        tokio::spawn(async move {
+            let html = email::login_notification_html(&name, &time_str);
+            email::log_if_err(
+                email::send(
+                    &smtp_host,
+                    smtp_port,
+                    smtp_user.as_deref(),
+                    smtp_pass.as_deref(),
+                    &email_from,
+                    &to,
+                    "Novo acesso à sua conta — CaaS Developer Portal",
+                    &html,
+                )
+                .await,
+                "login_notification",
+            );
+        });
+    }
+
+    Ok(Json(result))
+}
+
+async fn totp_verify_login(
+    State(state): State<AppState>,
+    Json(body): Json<TotpVerifyLoginRequest>,
+) -> ApiResult<Json<crate::models::auth::LoginResponse>> {
+    let resp = auth::totp_verify_login(
+        &body.challenge_token,
+        &body.code,
+        &state.config.jwt_secret,
+        &state.db.pool,
+    )
+    .await
+    .map_err(|e| {
+        let msg = e.to_string();
+        if msg == "INVALID_TOTP_CODE" || msg == "INVALID_CHALLENGE_TOKEN" {
+            ApiError::Unauthorized
+        } else {
+            ApiError::Internal(e)
+        }
+    })?;
+
+    let smtp_host = state.config.smtp_host.clone();
+    let smtp_port = state.config.smtp_port;
+    let smtp_user = state.config.smtp_username.clone();
+    let smtp_pass = state.config.smtp_password.clone();
+    let email_from = state.config.email_from.clone();
+    let name = resp.developer.name.clone();
+    let to = resp.developer.email.clone();
+    let time_str = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    tokio::spawn(async move {
+        let html = email::login_notification_html(&name, &time_str);
+        email::log_if_err(
+            email::send(
+                &smtp_host,
+                smtp_port,
+                smtp_user.as_deref(),
+                smtp_pass.as_deref(),
+                &email_from,
+                &to,
+                "Novo acesso à sua conta — CaaS Developer Portal",
+                &html,
+            )
+            .await,
+            "login_notification",
+        );
+    });
+
+    Ok(Json(resp))
 }
 
 async fn verify_email(
@@ -211,6 +298,58 @@ async fn get_requests(
         .await
         .map_err(ApiError::Internal)
         .map(Json)
+}
+
+async fn totp_setup(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
+) -> ApiResult<Json<TotpSetupResponse>> {
+    auth::totp_setup(&claims.sub, &state.db.pool)
+        .await
+        .map_err(ApiError::Internal)
+        .map(Json)
+}
+
+async fn totp_confirm(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
+    Json(body): Json<TotpConfirmRequest>,
+) -> ApiResult<Json<serde_json::Value>> {
+    auth::totp_confirm(&claims.sub, &body.code, &state.db.pool)
+        .await
+        .map_err(|e| {
+            if e.to_string() == "INVALID_TOTP_CODE" {
+                ApiError::Custom(
+                    axum::http::StatusCode::UNPROCESSABLE_ENTITY,
+                    "INVALID_TOTP_CODE",
+                    "Código inválido. Tente novamente.".into(),
+                )
+            } else {
+                ApiError::Internal(e)
+            }
+        })?;
+    Ok(Json(serde_json::json!({ "totp_enabled": true })))
+}
+
+async fn totp_disable(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
+    Json(body): Json<TotpDisableRequest>,
+) -> ApiResult<Json<serde_json::Value>> {
+    auth::totp_disable(&claims.sub, &body.code, &state.db.pool)
+        .await
+        .map_err(|e| {
+            if e.to_string() == "INVALID_TOTP_CODE" {
+                ApiError::Custom(
+                    axum::http::StatusCode::UNPROCESSABLE_ENTITY,
+                    "INVALID_TOTP_CODE",
+                    "Código inválido. Tente novamente.".into(),
+                )
+            } else {
+                ApiError::Internal(e)
+            }
+        })?;
+    Ok(Json(serde_json::json!({ "totp_enabled": false })))
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

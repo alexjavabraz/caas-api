@@ -1,0 +1,3 @@
+ALTER TABLE developer_clients
+    ADD COLUMN IF NOT EXISTS totp_secret  TEXT,
+    ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN NOT NULL DEFAULT FALSE;

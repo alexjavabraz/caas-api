@@ -14,6 +14,8 @@ pub struct DeveloperClient {
     pub api_salt: String,
     pub is_active: bool,
     pub is_email_verified: bool,
+    pub totp_secret: Option<String>,
+    pub totp_enabled: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -109,7 +111,54 @@ pub struct MeResponse {
     pub email: String,
     pub is_active: bool,
     pub api_salt: String,
+    pub totp_enabled: bool,
     pub created_at: DateTime<Utc>,
+}
+
+/// Short-lived JWT claims used when TOTP verification is required before issuing a full token
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ChallengeClaims {
+    pub sub: String,
+    pub purpose: String,
+    pub exp: i64,
+    pub iat: i64,
+}
+
+/// POST /v1/auth/totp/setup response
+#[derive(Debug, Serialize)]
+pub struct TotpSetupResponse {
+    pub otpauth_uri: String,
+    pub totp_enabled: bool,
+}
+
+/// POST /v1/auth/totp/confirm — body
+#[derive(Debug, Deserialize)]
+pub struct TotpConfirmRequest {
+    pub code: String,
+}
+
+/// POST /v1/auth/totp/disable — body
+#[derive(Debug, Deserialize)]
+pub struct TotpDisableRequest {
+    pub code: String,
+}
+
+/// POST /v1/auth/totp/verify-login — body
+#[derive(Debug, Deserialize)]
+pub struct TotpVerifyLoginRequest {
+    pub challenge_token: String,
+    pub code: String,
+}
+
+/// developer/login returns either a full session or a TOTP challenge
+#[derive(Debug, Serialize)]
+#[serde(untagged)]
+pub enum DeveloperLoginResult {
+    Success(LoginResponse),
+    TotpChallenge {
+        totp_required: bool,
+        challenge_token: String,
+    },
 }
 
 /// POST /v1/auth/rotate-secret response (one-time plaintext)

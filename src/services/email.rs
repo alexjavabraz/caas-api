@@ -68,6 +68,20 @@ pub fn temp_password_html(name: &str, temp_password: &str) -> String {
     )
 }
 
+pub fn login_notification_html(name: &str, time_str: &str) -> String {
+    format!(
+        r#"<!DOCTYPE html><html><body style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
+<h2 style="color:#6c63ff">Novo acesso à sua conta — CaaS Developer Portal</h2>
+<p>Olá, <strong>{name}</strong>!</p>
+<p>Detectamos um novo login na sua conta em:</p>
+<p style="font-size:16px;font-weight:bold;background:#f4f4f4;padding:10px 16px;border-radius:6px;display:inline-block">{time_str} UTC</p>
+<p>Se foi você, ignore este e-mail.</p>
+<p style="color:#e74c3c">Se não reconhece este acesso, <strong>altere sua senha imediatamente</strong> e considere ativar o segundo fator de autenticação.</p>
+<p style="color:#888;font-size:11px">tokeniza.online</p>
+</body></html>"#
+    )
+}
+
 pub fn log_if_err(result: anyhow::Result<()>, context: &str) {
     if let Err(e) = result {
         error!("{context}: {e}");
